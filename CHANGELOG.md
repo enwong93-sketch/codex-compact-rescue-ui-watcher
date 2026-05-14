@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8
+
+- Avoids stopping compact too early by requiring the active compacting status to disappear before switching back to GPT-5.5.
+- Removes the unsafe idle-loop shortcut that switched from GPT-5.4-Mini to GPT-5.5 just because any completion marker was visible.
+- Accepts `Codex*` window titles so temporary `Codex (not responding)` states during compact do not abort the recovery wait.
+
 ## 0.1.7
 
 - Restores the full default recovery flow: after switching back to GPT-5.5, the watcher sends the final `繼續` unless `-NoFinalResume` is explicitly passed.

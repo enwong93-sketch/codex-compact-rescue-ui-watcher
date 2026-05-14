@@ -74,7 +74,7 @@ function Get-CodexWindow {
   )
 
   foreach ($window in $windows) {
-    if ($window.Current.Name -eq "Codex") {
+    if ($window.Current.Name -like "Codex*") {
       return $window
     }
   }
@@ -989,8 +989,17 @@ function Wait-For-NewCompactMarker {
   }
 
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $lastWaitingLog = [datetime]::MinValue
   while ((Get-Date) -lt $deadline) {
-    $snapshot = Get-CompactMarkerSnapshot
+    try {
+      $snapshot = Get-CompactMarkerSnapshot
+      $activeCompacting = Test-ActiveCompactingVisible
+    } catch {
+      Write-Log "Waiting for compact completion; Codex window is temporarily unavailable: $($_.Exception.Message)"
+      Start-Sleep -Seconds 2
+      continue
+    }
+
     $hasNewMarker = $false
     foreach ($key in $snapshot.KeyMap.Keys) {
       if (-not $BaselineKeys.ContainsKey($key)) {
@@ -1000,8 +1009,15 @@ function Wait-For-NewCompactMarker {
     }
 
     if ($hasNewMarker -or $snapshot.Count -gt $BaselineCount -or $snapshot.MaxY -gt ($BaselineMaxY + 12)) {
-      Write-Log "New compact marker detected. Count=$($snapshot.Count) BaselineCount=$BaselineCount MaxY=$($snapshot.MaxY) BaselineMaxY=$BaselineMaxY"
-      return $true
+      if (-not $activeCompacting) {
+        Write-Log "Compact completion confirmed. Count=$($snapshot.Count) BaselineCount=$BaselineCount MaxY=$($snapshot.MaxY) BaselineMaxY=$BaselineMaxY"
+        return $true
+      }
+
+      if (((Get-Date) - $lastWaitingLog).TotalSeconds -ge 10) {
+        Write-Log "Compact marker candidate visible, but compacting status is still active; waiting."
+        $lastWaitingLog = Get-Date
+      }
     }
 
     Start-Sleep -Seconds 2
@@ -1061,7 +1077,12 @@ function Invoke-Recovery {
   $markerBaseline = Get-CompactMarkerSnapshot
   Write-Log "Waiting for compact to finish after 5.4-Mini. BaselineCount=$($markerBaseline.Count) BaselineMaxY=$($markerBaseline.MaxY)"
   Click-Continue-Or-Send $ResumeText
-  Wait-For-NewCompactMarker $CompactWaitSeconds $markerBaseline.Count $markerBaseline.MaxY $markerBaseline.KeyMap | Out-Null
+  $compactCompleted = Wait-For-NewCompactMarker $CompactWaitSeconds $markerBaseline.Count $markerBaseline.MaxY $markerBaseline.KeyMap
+  if (-not $compactCompleted) {
+    Write-Log "Compact completion was not confirmed; leaving model on GPT-5.4-Mini and not stopping the active run."
+    return
+  }
+
   Stop-If-Running | Out-Null
   Set-CodexModel "5.5"
 
@@ -1083,21 +1104,8 @@ if ($SwitchModelOnly) {
 do {
   try {
     $currentModelName = Get-CurrentModelName
-    $currentMarkerSnapshot = Get-CompactMarkerSnapshot
-    if ($currentModelName -match "^5\.4-Mini" -and $currentMarkerSnapshot.Count -gt 0) {
-      Write-Log "Compact marker already visible while model is $currentModelName; switching back to GPT-5.5."
-      Stop-If-Running | Out-Null
-      Set-CodexModel "5.5"
-      if ($ShouldFinalResume) {
-        Click-Continue-Or-Send $ResumeText
-      }
-      Write-Log "Recovery round complete; waiting $RoundCooldownSeconds seconds before watching for a new round."
-      Start-Sleep -Seconds $RoundCooldownSeconds
-      continue
-    }
-
     if ($currentModelName -match "^5\.4-Mini") {
-      Write-Log "Already on GPT-5.4-Mini; waiting for compact marker instead of switching again."
+      Write-Log "Already on GPT-5.4-Mini; not inferring compact completion from stale visible markers."
       Start-Sleep -Seconds $PollSeconds
       continue
     }
