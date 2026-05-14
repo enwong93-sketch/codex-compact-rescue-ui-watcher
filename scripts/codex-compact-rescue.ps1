@@ -855,6 +855,21 @@ function Add-HandledTrigger {
   Add-HandledTriggerKey (Get-CompactTriggerKey $Trigger)
 }
 
+function Add-VisibleStatusTriggers {
+  $count = 0
+  foreach ($visibleTrigger in @(Get-CompactTriggers)) {
+    $key = Get-CompactTriggerKey $visibleTrigger
+    if ($key -like "status|*") {
+      $HandledTriggerKeys[$key] = (Get-Date).AddSeconds($HandledStatusTtlSeconds)
+      $count += 1
+    }
+  }
+
+  if ($count -gt 0) {
+    Write-Log "Marked $count visible compact status trigger(s) as handled until they disappear."
+  }
+}
+
 function Wait-For-CompactMarker {
   param([int]$TimeoutSeconds)
 
@@ -1096,6 +1111,7 @@ do {
       $compactTriggerName = $compactTrigger.Current.Name
       Invoke-Recovery $compactTriggerName
       Add-HandledTriggerKey $compactTriggerKey
+      Add-VisibleStatusTriggers
       if ($Once) {
         break
       }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Marks all currently visible compacting status triggers after a recovery, preventing loops caused by multiple stale status lines on screen.
+
 ## 0.1.2
 
 - Prevents repeated recovery loops when the same visible compacting status remains on screen after a successful round.
