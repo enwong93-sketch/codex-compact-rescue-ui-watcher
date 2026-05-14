@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Fixes repeat-round detection by caching only compact error triggers.
+- Keeps active compacting status triggers eligible for future recovery rounds.
+
 ## 0.1.0
 
 - Initial public release.

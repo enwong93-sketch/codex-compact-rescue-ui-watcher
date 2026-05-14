@@ -92,7 +92,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-compact-resc
 
 - This is UI automation, so Codex UI changes can require script updates.
 - Keep the model button and composer visible. Full-screen is fine.
-- The watcher suppresses the same visible compact error for 15 minutes after a successful recovery, so old error text does not trigger another round.
+- The watcher suppresses the same visible compact error for 15 minutes after a successful recovery, so old error text does not trigger another round. Active compacting status text is never cached, because a later status marker can be a real new compact round.
 - Completion is not guessed by a fixed timer. The watcher records existing compact markers and waits for a newly visible completion marker.
 
 ## Troubleshooting

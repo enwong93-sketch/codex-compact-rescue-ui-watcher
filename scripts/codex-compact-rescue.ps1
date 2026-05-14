@@ -796,15 +796,29 @@ function Test-HandledTrigger {
   }
 
   $key = Get-CompactTriggerKey $Trigger
+  if ($key -notlike "error|*") {
+    return $false
+  }
+
   return $HandledTriggerKeys.ContainsKey($key)
+}
+
+function Add-HandledTriggerKey {
+  param([string]$Key)
+
+  if ($Key -notlike "error|*") {
+    Write-Log "Status compact trigger is not cached: $Key"
+    return
+  }
+
+  $HandledTriggerKeys[$Key] = (Get-Date).AddSeconds($HandledTriggerTtlSeconds)
+  Write-Log "Marked compact error trigger as handled: $Key"
 }
 
 function Add-HandledTrigger {
   param([System.Windows.Automation.AutomationElement]$Trigger)
 
-  $key = Get-CompactTriggerKey $Trigger
-  $HandledTriggerKeys[$key] = (Get-Date).AddSeconds($HandledTriggerTtlSeconds)
-  Write-Log "Marked compact trigger as handled: $key"
+  Add-HandledTriggerKey (Get-CompactTriggerKey $Trigger)
 }
 
 function Wait-For-CompactMarker {
@@ -1045,9 +1059,9 @@ do {
       }
 
       $compactTriggerKey = Get-CompactTriggerKey $compactTrigger
-      Invoke-Recovery $compactTrigger.Current.Name
-      $HandledTriggerKeys[$compactTriggerKey] = (Get-Date).AddSeconds($HandledTriggerTtlSeconds)
-      Write-Log "Marked compact trigger as handled: $compactTriggerKey"
+      $compactTriggerName = $compactTrigger.Current.Name
+      Invoke-Recovery $compactTriggerName
+      Add-HandledTriggerKey $compactTriggerKey
       if ($Once) {
         break
       }
