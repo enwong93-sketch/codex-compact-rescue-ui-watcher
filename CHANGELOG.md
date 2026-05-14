@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6
+
+- Renames local `$matches` arrays to avoid PowerShell's automatic `$Matches` hashtable after regex `-match`, fixing repeated hashtable-add errors.
+
 ## 0.1.5
 
 - Fixes a PowerShell hashtable/property-name collision that could log `A hash table can only be added to another hash table` before recovery started.

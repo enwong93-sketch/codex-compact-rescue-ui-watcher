@@ -135,7 +135,7 @@ function Find-VisibleMenuItemExact {
     [string]$Name
   )
 
-  $matches = @()
+  $matchedNodes = @()
   foreach ($node in $Nodes) {
     $bounds = $node.Current.BoundingRectangle
     if (
@@ -147,11 +147,11 @@ function Find-VisibleMenuItemExact {
       $bounds.Height -gt 0 -and
       $bounds.Y -gt -20
     ) {
-      $matches += $node
+      $matchedNodes += $node
     }
   }
 
-  return $matches | Sort-Object { $_.Current.BoundingRectangle.X } -Descending | Select-Object -First 1
+  return $matchedNodes | Sort-Object { $_.Current.BoundingRectangle.X } -Descending | Select-Object -First 1
 }
 
 function Click-Node {
@@ -742,7 +742,7 @@ function Set-CodexModel {
 function Get-CompactTriggers {
   $window = Get-CodexWindow
   $nodes = Get-Descendants $window
-  $matches = @()
+  $matchedTriggers = @()
 
   foreach ($node in $nodes) {
     if ($node.Current.ControlType.ProgrammaticName -ne "ControlType.Text") { continue }
@@ -754,7 +754,7 @@ function Get-CompactTriggers {
     if (-not $name) { continue }
 
     if ($name -match "Error running remote compact task:.*backend-api/codex/responses/compact|stream disconnected before completion") {
-      $matches += $node
+      $matchedTriggers += $node
       continue
     }
 
@@ -768,12 +768,12 @@ function Get-CompactTriggers {
       $trimmed -eq $TextCompactingC -or
       $trimmed -match "^(compacting.*context|context.*compacting|auto.*compact)$"
     ) {
-      $matches += $node
+      $matchedTriggers += $node
       continue
     }
   }
 
-  return $matches
+  return $matchedTriggers
 }
 
 function Get-CompactTrigger {
