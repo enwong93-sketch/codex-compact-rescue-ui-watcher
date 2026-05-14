@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Prevents repeated recovery loops when the same visible compacting status remains on screen after a successful round.
+- Tracks visible status triggers by UI runtime id and releases them when they disappear.
+
 ## 0.1.1
 
 - Fixes repeat-round detection by caching only compact error triggers.

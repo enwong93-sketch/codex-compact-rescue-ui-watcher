@@ -57,6 +57,7 @@ if (-not $ResumeText) {
 
 $HandledTriggerKeys = @{}
 $HandledTriggerTtlSeconds = 900
+$HandledStatusTtlSeconds = 86400
 
 function Get-RootElement {
   return [System.Windows.Automation.AutomationElement]::RootElement
@@ -733,9 +734,10 @@ function Set-CodexModel {
   throw "Model switch to $targetName was not confirmed."
 }
 
-function Get-CompactTrigger {
+function Get-CompactTriggers {
   $window = Get-CodexWindow
   $nodes = Get-Descendants $window
+  $matches = @()
 
   foreach ($node in $nodes) {
     if ($node.Current.ControlType.ProgrammaticName -ne "ControlType.Text") { continue }
@@ -747,7 +749,8 @@ function Get-CompactTrigger {
     if (-not $name) { continue }
 
     if ($name -match "Error running remote compact task:.*backend-api/codex/responses/compact|stream disconnected before completion") {
-      return $node
+      $matches += $node
+      continue
     }
 
     $trimmed = $name.Trim()
@@ -760,8 +763,18 @@ function Get-CompactTrigger {
       $trimmed -eq $TextCompactingC -or
       $trimmed -match "^(compacting.*context|context.*compacting|auto.*compact)$"
     ) {
-      return $node
+      $matches += $node
+      continue
     }
+  }
+
+  return $matches
+}
+
+function Get-CompactTrigger {
+  $triggers = @(Get-CompactTriggers)
+  if ($triggers.Count -gt 0) {
+    return $triggers[0]
   }
 
   return $null
@@ -782,6 +795,14 @@ function Get-CompactTriggerKey {
 
   $bounds = $Trigger.Current.BoundingRectangle
   $roundedY = [math]::Round($bounds.Y / 10) * 10
+  try {
+    $runtimeId = $Trigger.GetRuntimeId()
+    if ($runtimeId -and $runtimeId.Count -gt 0) {
+      return "status|$trimmed|rid=$($runtimeId -join '.')"
+    }
+  } catch {
+  }
+
   return "status|$trimmed|y=$roundedY"
 }
 
@@ -789,25 +810,38 @@ function Test-HandledTrigger {
   param([System.Windows.Automation.AutomationElement]$Trigger)
 
   $now = Get-Date
+  $visibleStatusKeys = @{}
+  foreach ($visibleTrigger in @(Get-CompactTriggers)) {
+    $visibleKey = Get-CompactTriggerKey $visibleTrigger
+    if ($visibleKey -like "status|*") {
+      $visibleStatusKeys[$visibleKey] = $true
+    }
+  }
+
   foreach ($key in @($HandledTriggerKeys.Keys)) {
-    if ($HandledTriggerKeys[$key] -lt $now) {
+    if ($key -like "status|*") {
+      if (-not $visibleStatusKeys.ContainsKey($key) -or $HandledTriggerKeys[$key] -lt $now) {
+        $HandledTriggerKeys.Remove($key)
+      }
+    } elseif ($HandledTriggerKeys[$key] -lt $now) {
       $HandledTriggerKeys.Remove($key)
     }
   }
 
   $key = Get-CompactTriggerKey $Trigger
-  if ($key -notlike "error|*") {
-    return $false
-  }
-
   return $HandledTriggerKeys.ContainsKey($key)
 }
 
 function Add-HandledTriggerKey {
   param([string]$Key)
 
+  if ($Key -like "status|*") {
+    $HandledTriggerKeys[$Key] = (Get-Date).AddSeconds($HandledStatusTtlSeconds)
+    Write-Log "Marked visible compact status as handled until it disappears: $Key"
+    return
+  }
+
   if ($Key -notlike "error|*") {
-    Write-Log "Status compact trigger is not cached: $Key"
     return
   }
 
