@@ -935,7 +935,7 @@ function Get-CompactMarkerSnapshot {
     }
   }
 
-  return [pscustomobject]@{ Count = $count; MaxY = $maxY; Keys = $keys }
+  return [pscustomobject]@{ Count = $count; MaxY = $maxY; KeyMap = $keys }
 }
 
 function Test-ActiveCompactingVisible {
@@ -994,7 +994,7 @@ function Wait-For-NewCompactMarker {
   while ((Get-Date) -lt $deadline) {
     $snapshot = Get-CompactMarkerSnapshot
     $hasNewMarker = $false
-    foreach ($key in $snapshot.Keys.Keys) {
+    foreach ($key in $snapshot.KeyMap.Keys) {
       if (-not $BaselineKeys.ContainsKey($key)) {
         $hasNewMarker = $true
         break
@@ -1063,7 +1063,7 @@ function Invoke-Recovery {
   $markerBaseline = Get-CompactMarkerSnapshot
   Write-Log "Waiting for compact to finish after 5.4-Mini. BaselineCount=$($markerBaseline.Count) BaselineMaxY=$($markerBaseline.MaxY)"
   Click-Continue-Or-Send $ResumeText
-  Wait-For-NewCompactMarker $CompactWaitSeconds $markerBaseline.Count $markerBaseline.MaxY $markerBaseline.Keys | Out-Null
+  Wait-For-NewCompactMarker $CompactWaitSeconds $markerBaseline.Count $markerBaseline.MaxY $markerBaseline.KeyMap | Out-Null
   Stop-If-Running | Out-Null
   Set-CodexModel "5.5"
 

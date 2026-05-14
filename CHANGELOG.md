@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5
+
+- Fixes a PowerShell hashtable/property-name collision that could log `A hash table can only be added to another hash table` before recovery started.
+
 ## 0.1.4
 
 - Changes the default recovery finish to switch back to GPT-5.5 without sending final `繼續`, preventing immediate re-compact loops.
