@@ -84,7 +84,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-compact-resc
 - `-AfterStopDelaySeconds`: wait after clicking Stop/Pause before switching models.
 - `-RoundCooldownSeconds`: wait after a completed recovery before watching again.
 - `-ResumeText`: text sent when no clickable continue button is available. Default: `繼續`.
-- `-NoFinalResume`: switch back to GPT-5.5 but do not send final `繼續`.
+- `-FinalResume`: after switching back to GPT-5.5, send final `繼續`. This is off by default to avoid immediately triggering another compact loop.
+- `-NoFinalResume`: legacy alias; final resume is already off by default.
 - `-Once`: handle one recovery round then exit.
 - `-WhatIf`: log planned actions without clicking or typing.
 
@@ -93,6 +94,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-compact-resc
 - This is UI automation, so Codex UI changes can require script updates.
 - Keep the model button and composer visible. Full-screen is fine.
 - The watcher suppresses the same visible compact error for 15 minutes after a successful recovery, so old error text does not trigger another round. After each recovery it marks every currently visible compacting status as handled until those UI elements disappear; a later newly created status marker can still start a real new round.
+- By default, recovery stops after switching back to GPT-5.5. Use `-FinalResume` only if you explicitly want the watcher to send `繼續` after returning to GPT-5.5.
 - Completion is not guessed by a fixed timer. The watcher records existing compact markers and waits for a newly visible completion marker.
 
 ## Troubleshooting

@@ -8,6 +8,7 @@ param(
   [string]$SwitchModelOnly = "",
   [switch]$Once,
   [switch]$NoFinalResume,
+  [switch]$FinalResume,
   [switch]$WhatIf
 )
 
@@ -53,6 +54,10 @@ $TextXHigh = U @(0x8d85, 0x9ad8)
 
 if (-not $ResumeText) {
   $ResumeText = $TextContinue
+}
+
+if (-not $FinalResume) {
+  $NoFinalResume = $true
 }
 
 $HandledTriggerKeys = @{}
@@ -1069,7 +1074,7 @@ function Invoke-Recovery {
   Write-Log "Recovery flow finished."
 }
 
-Write-Log "Codex compact rescue watcher started. PollSeconds=$PollSeconds RoundCooldownSeconds=$RoundCooldownSeconds Once=$Once WhatIf=$WhatIf"
+Write-Log "Codex compact rescue watcher started. PollSeconds=$PollSeconds RoundCooldownSeconds=$RoundCooldownSeconds Once=$Once FinalResume=$FinalResume WhatIf=$WhatIf"
 
 if ($SwitchModelOnly) {
   Set-CodexModel $SwitchModelOnly

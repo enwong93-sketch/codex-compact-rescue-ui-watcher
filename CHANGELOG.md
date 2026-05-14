@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4
+
+- Changes the default recovery finish to switch back to GPT-5.5 without sending final `繼續`, preventing immediate re-compact loops.
+- Adds `-FinalResume` for users who explicitly want the previous auto-resume behavior.
+
 ## 0.1.3
 
 - Marks all currently visible compacting status triggers after a recovery, preventing loops caused by multiple stale status lines on screen.
