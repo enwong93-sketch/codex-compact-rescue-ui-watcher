@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7
+
+- Restores the full default recovery flow: after switching back to GPT-5.5, the watcher sends the final `繼續` unless `-NoFinalResume` is explicitly passed.
+
 ## 0.1.6
 
 - Renames local `$matches` arrays to avoid PowerShell's automatic `$Matches` hashtable after regex `-match`, fixing repeated hashtable-add errors.

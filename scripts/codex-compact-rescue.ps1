@@ -56,9 +56,7 @@ if (-not $ResumeText) {
   $ResumeText = $TextContinue
 }
 
-if (-not $FinalResume) {
-  $NoFinalResume = $true
-}
+$ShouldFinalResume = -not $NoFinalResume
 
 $HandledTriggerKeys = @{}
 $HandledTriggerTtlSeconds = 900
@@ -1067,14 +1065,14 @@ function Invoke-Recovery {
   Stop-If-Running | Out-Null
   Set-CodexModel "5.5"
 
-  if (-not $NoFinalResume) {
+  if ($ShouldFinalResume) {
     Click-Continue-Or-Send $ResumeText
   }
 
   Write-Log "Recovery flow finished."
 }
 
-Write-Log "Codex compact rescue watcher started. PollSeconds=$PollSeconds RoundCooldownSeconds=$RoundCooldownSeconds Once=$Once FinalResume=$FinalResume WhatIf=$WhatIf"
+Write-Log "Codex compact rescue watcher started. PollSeconds=$PollSeconds RoundCooldownSeconds=$RoundCooldownSeconds Once=$Once FinalResume=$ShouldFinalResume WhatIf=$WhatIf"
 
 if ($SwitchModelOnly) {
   Set-CodexModel $SwitchModelOnly
@@ -1090,7 +1088,7 @@ do {
       Write-Log "Compact marker already visible while model is $currentModelName; switching back to GPT-5.5."
       Stop-If-Running | Out-Null
       Set-CodexModel "5.5"
-      if (-not $NoFinalResume) {
+      if ($ShouldFinalResume) {
         Click-Continue-Or-Send $ResumeText
       }
       Write-Log "Recovery round complete; waiting $RoundCooldownSeconds seconds before watching for a new round."
