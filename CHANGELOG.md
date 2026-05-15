@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.9
+
+- Adds delayed model confirmation after keyboard/mouse model changes, reducing failures when Codex shows transient model-change warnings.
+- Retries the final `繼續` after returning to GPT-5.5 and confirms it by checking for a visible stop/pause control.
+
 ## 0.1.8
 
 - Avoids stopping compact too early by requiring the active compacting status to disappear before switching back to GPT-5.5.

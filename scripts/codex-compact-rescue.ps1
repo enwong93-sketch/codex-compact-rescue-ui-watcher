@@ -376,12 +376,12 @@ function Set-CodexModelWithAnchoredClicks {
   Start-Sleep -Milliseconds 200
 
   $current = Get-CurrentModelName
-  if ($Model -eq "5.4-Mini" -and $current -match "^5\.4-Mini") {
+  if (Test-ModelNameMatches $Model $current) {
     Write-Log "Anchored model switch confirmed: $current"
     return $true
   }
-  if ($Model -eq "5.5" -and $current -match "^5\.5") {
-    Write-Log "Anchored model switch confirmed: $current"
+
+  if (Wait-ForModelName $Model 5) {
     return $true
   }
 
@@ -486,6 +486,42 @@ function Get-CurrentModelName {
   }
 }
 
+function Test-ModelNameMatches {
+  param(
+    [string]$Model,
+    [string]$Current
+  )
+
+  if ($Model -eq "5.4-Mini") {
+    return $Current -match "^5\.4-Mini"
+  }
+
+  return $Current -match "^5\.5"
+}
+
+function Wait-ForModelName {
+  param(
+    [ValidateSet("5.4-Mini", "5.5")]
+    [string]$Model,
+    [int]$TimeoutSeconds = 8
+  )
+
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    $current = Get-CurrentModelName
+    if (Test-ModelNameMatches $Model $current) {
+      Write-Log "Model switch confirmed after wait: $current"
+      return $true
+    }
+
+    Start-Sleep -Milliseconds 500
+  }
+
+  $current = Get-CurrentModelName
+  Write-Log "Model switch wait timed out. Current model button: $current"
+  return $false
+}
+
 function Open-ModelMenu {
   param([switch]$SkipVerify)
 
@@ -539,8 +575,12 @@ function Set-CodexModelWithKeyboard {
     Start-Sleep -Seconds 1
 
     $current = Get-CurrentModelName
-    if ($current -match "^5\.4-Mini") {
+    if (Test-ModelNameMatches $Model $current) {
       Write-Log "Keyboard model switch confirmed: $current"
+      return $true
+    }
+
+    if (Wait-ForModelName $Model 5) {
       return $true
     }
 
@@ -569,8 +609,12 @@ function Set-CodexModelWithKeyboard {
     Start-Sleep -Seconds 1
 
     $current = Get-CurrentModelName
-    if ($current -match "^5\.5") {
+    if (Test-ModelNameMatches $Model $current) {
       Write-Log "Keyboard model switch confirmed: $current"
+      return $true
+    }
+
+    if (Wait-ForModelName $Model 5) {
       return $true
     }
 
@@ -665,12 +709,12 @@ function Set-CodexModelWithMouse {
   Start-Sleep -Milliseconds 200
 
   $current = Get-CurrentModelName
-  if ($Model -eq "5.4-Mini" -and $current -match "^5\.4-Mini") {
+  if (Test-ModelNameMatches $Model $current) {
     Write-Log "Mouse model switch confirmed: $current"
     return $true
   }
-  if ($Model -eq "5.5" -and $current -match "^5\.5") {
-    Write-Log "Mouse model switch confirmed: $current"
+
+  if (Wait-ForModelName $Model 5) {
     return $true
   }
 
@@ -691,11 +735,7 @@ function Set-CodexModel {
   }
 
   $current = Get-CurrentModelName
-  if ($Model -eq "5.4-Mini" -and $current -match "^5\.4-Mini") {
-    Write-Log "Already on target model: $current"
-    return
-  }
-  if ($Model -eq "5.5" -and $current -match "^5\.5") {
+  if (Test-ModelNameMatches $Model $current) {
     Write-Log "Already on target model: $current"
     return
   }
@@ -707,9 +747,15 @@ function Set-CodexModel {
       if (Set-CodexModelWithKeyboard $Model) {
         return
       }
+      if (Wait-ForModelName $Model 3) {
+        return
+      }
 
       try {
         if (Set-CodexModelWithMouse $Model) {
+          return
+        }
+        if (Wait-ForModelName $Model 3) {
           return
         }
       } catch {
@@ -728,8 +774,14 @@ function Set-CodexModel {
   if (Set-CodexModelWithKeyboard $Model) {
     return
   }
+  if (Wait-ForModelName $Model 3) {
+    return
+  }
 
   if (Set-CodexModelWithAnchoredClicks $Model) {
+    return
+  }
+  if (Wait-ForModelName $Model 3) {
     return
   }
 
@@ -1065,6 +1117,28 @@ function Click-Continue-Or-Send {
   Send-Text $Text
 }
 
+function Invoke-ResumeWithRetry {
+  param(
+    [string]$Text,
+    [int]$Attempts = 3
+  )
+
+  for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+    Close-OpenMenu
+    Write-Log "Resume attempt $attempt."
+    Click-Continue-Or-Send $Text
+    Start-Sleep -Seconds 3
+
+    if (Test-StopVisible) {
+      Write-Log "Resume confirmed by visible stop/pause control."
+      return $true
+    }
+  }
+
+  Write-Log "Resume was not confirmed after $Attempts attempt(s)."
+  return $false
+}
+
 function Invoke-Recovery {
   param([string]$TriggerName = "")
 
@@ -1087,7 +1161,7 @@ function Invoke-Recovery {
   Set-CodexModel "5.5"
 
   if ($ShouldFinalResume) {
-    Click-Continue-Or-Send $ResumeText
+    Invoke-ResumeWithRetry $ResumeText | Out-Null
   }
 
   Write-Log "Recovery flow finished."
