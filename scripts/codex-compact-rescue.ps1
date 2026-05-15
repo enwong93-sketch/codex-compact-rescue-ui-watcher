@@ -3,6 +3,7 @@ param(
   [int]$CompactWaitSeconds = 600,
   [int]$AfterStopDelaySeconds = 1,
   [int]$RoundCooldownSeconds = 60,
+  [int]$FinalResumeConfirmSeconds = 90,
   [string]$ResumeText = "",
   [ValidateSet("", "5.4-Mini", "5.5")]
   [string]$SwitchModelOnly = "",
@@ -50,6 +51,8 @@ $TextStop = U @(0x505c, 0x6b62)
 $TextPause = U @(0x66ab, 0x505c)
 $TextContinueTask = U @(0x7e7c, 0x7e8c, 0x5b8c, 0x6210, 0x4efb, 0x52d9)
 $TextComposerPlaceholder = U @(0x8981, 0x6c42, 0x5f8c, 0x7e8c, 0x8ddf, 0x9032, 0x8b8a, 0x66f4)
+$TextThinking = U @(0x6b63, 0x5728, 0x601d, 0x8003)
+$TextRunning = U @(0x6b63, 0x5728, 0x57f7, 0x884c)
 $TextOtherModels = U @(0x5176, 0x4ed6, 0x6a21, 0x578b)
 $TextXHigh = U @(0x8d85, 0x9ad8)
 
@@ -1165,25 +1168,68 @@ function Click-Continue-Or-Send {
   Send-Text $Text
 }
 
-function Invoke-ResumeWithRetry {
-  param(
-    [string]$Text,
-    [int]$Attempts = 3
-  )
-
-  for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
-    Close-OpenMenu
-    Write-Log "Resume attempt $attempt."
-    Click-Continue-Or-Send $Text
-    Start-Sleep -Seconds 3
-
+function Test-RunStartedVisible {
+  try {
     if (Test-StopVisible) {
       Write-Log "Resume confirmed by visible stop/pause control."
       return $true
     }
+
+    $window = Get-CodexWindow
+    $nodes = Get-Descendants $window
+    $runningRegex = (
+      "^" + [regex]::Escape($TextThinking) + "|" +
+      "^" + [regex]::Escape($TextRunning) + "|thinking|running|executing"
+    )
+
+    foreach ($node in $nodes) {
+      if ($node.Current.ControlType.ProgrammaticName -ne "ControlType.Text") { continue }
+
+      $bounds = $node.Current.BoundingRectangle
+      if ($bounds.IsEmpty -or $bounds.Width -le 0 -or $bounds.Height -le 0 -or $bounds.Y -lt -20) { continue }
+
+      $name = $node.Current.Name
+      if (-not $name) { continue }
+
+      if ($name -match $runningRegex) {
+        Write-Log "Resume confirmed by running status: $name"
+        return $true
+      }
+    }
+  } catch {
+    Write-Log "Waiting for resume confirmation; Codex window is temporarily unavailable: $($_.Exception.Message)"
   }
 
-  Write-Log "Resume was not confirmed after $Attempts attempt(s)."
+  return $false
+}
+
+function Invoke-FinalResumeAndWait {
+  param(
+    [string]$Text,
+    [int]$TimeoutSeconds = 90
+  )
+
+  Close-OpenMenu
+  Start-Sleep -Seconds 5
+  Write-Log "Final resume: sending once, then waiting up to $TimeoutSeconds seconds for run confirmation."
+  Click-Continue-Or-Send $Text
+
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $lastWaitingLog = [datetime]::MinValue
+  while ((Get-Date) -lt $deadline) {
+    if (Test-RunStartedVisible) {
+      return $true
+    }
+
+    if (((Get-Date) - $lastWaitingLog).TotalSeconds -ge 10) {
+      Write-Log "Waiting for final resume to start; not sending another continue."
+      $lastWaitingLog = Get-Date
+    }
+
+    Start-Sleep -Seconds 2
+  }
+
+  Write-Log "Final resume was not confirmed before timeout; continue was sent only once."
   return $false
 }
 
@@ -1210,7 +1256,7 @@ function Invoke-Recovery {
   Set-CodexModel "5.5"
 
   if ($ShouldFinalResume) {
-    Invoke-ResumeWithRetry $ResumeText | Out-Null
+    Invoke-FinalResumeAndWait $ResumeText $FinalResumeConfirmSeconds | Out-Null
   }
 
   Write-Log "Recovery flow finished."

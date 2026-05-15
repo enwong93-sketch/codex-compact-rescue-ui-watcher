@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.11
+
+- Sends the final `繼續` only once after returning to GPT-5.5, then waits longer for Codex to load and confirm the run started.
+- Confirms the final resume by detecting a visible stop/pause control or running status such as `正在思考` / `正在執行`.
+- Adds `-FinalResumeConfirmSeconds` to tune the final confirmation wait time.
+
 ## 0.1.10
 
 - Treats `上下文已自動精簡` as a candidate signal only; the watcher now waits for a new post-compact ready marker such as `已引導對話` before switching back to GPT-5.5.
