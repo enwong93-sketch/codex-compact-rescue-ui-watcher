@@ -42,6 +42,7 @@ function U {
 
 $TextContinue = U @(0x7e7c, 0x7e8c)
 $TextCompactMarker = U @(0x4e0a, 0x4e0b, 0x6587, 0x5df2, 0x81ea, 0x52d5, 0x7cbe, 0x7c21)
+$TextGuidedConversation = U @(0x5df2, 0x5f15, 0x5c0e, 0x5c0d, 0x8a71)
 $TextCompactingA = U @(0x6b63, 0x5728, 0x81ea, 0x52d5, 0x58d3, 0x7e2e, 0x4e0a, 0x4e0b, 0x6587)
 $TextCompactingB = U @(0x4e0a, 0x4e0b, 0x6587, 0x6b63, 0x5728, 0x81ea, 0x52d5, 0x7cbe, 0x7c21)
 $TextCompactingC = U @(0x6b63, 0x5728, 0x81ea, 0x52d5, 0x7cbe, 0x7c21, 0x4e0a, 0x4e0b, 0x6587)
@@ -988,6 +989,32 @@ function Get-CompactMarkerSnapshot {
   return [pscustomobject]@{ Count = $count; MaxY = $maxY; KeyMap = $keys }
 }
 
+function Get-PostCompactReadySnapshot {
+  $window = Get-CodexWindow
+  $nodes = Get-Descendants $window
+  $readyRegex = ([regex]::Escape($TextGuidedConversation) + "|conversation.*guided|guided.*conversation")
+  $count = 0
+  $maxY = -99999
+  $keys = @{}
+
+  foreach ($node in $nodes) {
+    $name = $node.Current.Name
+    $bounds = $node.Current.BoundingRectangle
+    if (-not $name) { continue }
+    if ($node.Current.ControlType.ProgrammaticName -ne "ControlType.Text") { continue }
+    if ($name -notmatch $readyRegex) { continue }
+    if ($bounds.IsEmpty -or $bounds.Width -le 0 -or $bounds.Height -le 0 -or $bounds.Y -lt -20) { continue }
+
+    $count += 1
+    $keys[(Get-NodeIdentity $node)] = $true
+    if ($bounds.Y -gt $maxY) {
+      $maxY = $bounds.Y
+    }
+  }
+
+  return [pscustomobject]@{ Count = $count; MaxY = $maxY; KeyMap = $keys }
+}
+
 function Test-ActiveCompactingVisible {
   $window = Get-CodexWindow
   $nodes = Get-Descendants $window
@@ -1033,11 +1060,17 @@ function Wait-For-NewCompactMarker {
     [int]$TimeoutSeconds,
     [int]$BaselineCount,
     [double]$BaselineMaxY,
-    [hashtable]$BaselineKeys
+    [hashtable]$BaselineKeys,
+    [int]$BaselineReadyCount,
+    [double]$BaselineReadyMaxY,
+    [hashtable]$BaselineReadyKeys
   )
 
   if (-not $BaselineKeys) {
     $BaselineKeys = @{}
+  }
+  if (-not $BaselineReadyKeys) {
+    $BaselineReadyKeys = @{}
   }
 
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -1045,6 +1078,7 @@ function Wait-For-NewCompactMarker {
   while ((Get-Date) -lt $deadline) {
     try {
       $snapshot = Get-CompactMarkerSnapshot
+      $readySnapshot = Get-PostCompactReadySnapshot
       $activeCompacting = Test-ActiveCompactingVisible
     } catch {
       Write-Log "Waiting for compact completion; Codex window is temporarily unavailable: $($_.Exception.Message)"
@@ -1060,22 +1094,36 @@ function Wait-For-NewCompactMarker {
       }
     }
 
-    if ($hasNewMarker -or $snapshot.Count -gt $BaselineCount -or $snapshot.MaxY -gt ($BaselineMaxY + 12)) {
+    $hasReadyMarker = $false
+    foreach ($key in $readySnapshot.KeyMap.Keys) {
+      if (-not $BaselineReadyKeys.ContainsKey($key)) {
+        $hasReadyMarker = $true
+        break
+      }
+    }
+
+    $hasCompactCandidate = $hasNewMarker -or $snapshot.Count -gt $BaselineCount -or $snapshot.MaxY -gt ($BaselineMaxY + 12)
+    $hasReadyCandidate = $hasReadyMarker -or $readySnapshot.Count -gt $BaselineReadyCount -or $readySnapshot.MaxY -gt ($BaselineReadyMaxY + 12)
+
+    if ($hasReadyCandidate) {
       if (-not $activeCompacting) {
-        Write-Log "Compact completion confirmed. Count=$($snapshot.Count) BaselineCount=$BaselineCount MaxY=$($snapshot.MaxY) BaselineMaxY=$BaselineMaxY"
+        Write-Log "Compact completion confirmed by post-compact ready marker. CompactCount=$($snapshot.Count) ReadyCount=$($readySnapshot.Count) BaselineReadyCount=$BaselineReadyCount"
         return $true
       }
 
       if (((Get-Date) - $lastWaitingLog).TotalSeconds -ge 10) {
-        Write-Log "Compact marker candidate visible, but compacting status is still active; waiting."
+        Write-Log "Post-compact ready marker visible, but compacting status is still active; waiting."
         $lastWaitingLog = Get-Date
       }
+    } elseif ($hasCompactCandidate -and ((Get-Date) - $lastWaitingLog).TotalSeconds -ge 10) {
+      Write-Log "Compact marker candidate visible, but post-compact ready marker is not visible yet; waiting."
+      $lastWaitingLog = Get-Date
     }
 
     Start-Sleep -Seconds 2
   }
 
-  Write-Log "New compact marker was not detected before timeout."
+  Write-Log "Post-compact ready marker was not detected before timeout."
   return $false
 }
 
@@ -1149,9 +1197,10 @@ function Invoke-Recovery {
   Stop-If-Running | Out-Null
   Set-CodexModel "5.4-Mini"
   $markerBaseline = Get-CompactMarkerSnapshot
-  Write-Log "Waiting for compact to finish after 5.4-Mini. BaselineCount=$($markerBaseline.Count) BaselineMaxY=$($markerBaseline.MaxY)"
+  $readyBaseline = Get-PostCompactReadySnapshot
+  Write-Log "Waiting for compact to finish after 5.4-Mini. BaselineCount=$($markerBaseline.Count) BaselineMaxY=$($markerBaseline.MaxY) BaselineReadyCount=$($readyBaseline.Count) BaselineReadyMaxY=$($readyBaseline.MaxY)"
   Click-Continue-Or-Send $ResumeText
-  $compactCompleted = Wait-For-NewCompactMarker $CompactWaitSeconds $markerBaseline.Count $markerBaseline.MaxY $markerBaseline.KeyMap
+  $compactCompleted = Wait-For-NewCompactMarker $CompactWaitSeconds $markerBaseline.Count $markerBaseline.MaxY $markerBaseline.KeyMap $readyBaseline.Count $readyBaseline.MaxY $readyBaseline.KeyMap
   if (-not $compactCompleted) {
     Write-Log "Compact completion was not confirmed; leaving model on GPT-5.4-Mini and not stopping the active run."
     return

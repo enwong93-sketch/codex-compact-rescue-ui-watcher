@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.10
+
+- Treats `上下文已自動精簡` as a candidate signal only; the watcher now waits for a new post-compact ready marker such as `已引導對話` before switching back to GPT-5.5.
+- Prevents early model rollback when Codex displays the compact marker before the conversation is fully reattached.
+
 ## 0.1.9
 
 - Adds delayed model confirmation after keyboard/mouse model changes, reducing failures when Codex shows transient model-change warnings.
