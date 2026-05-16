@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.13
+
+- Scans all visible Codex desktop windows for compact triggers instead of only the first `Codex*` window.
+- Locks recovery actions to the window where the compact trigger was found, so multi-window Codex sessions can be watched by one watcher.
+
 ## 0.1.12
 
 - Retries Windows clipboard writes when sending `繼續`, fixing intermittent `Clipboard.SetText` failures.

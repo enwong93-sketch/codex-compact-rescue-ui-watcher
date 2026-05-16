@@ -65,22 +65,85 @@ $ShouldFinalResume = -not $NoFinalResume
 $HandledTriggerKeys = @{}
 $HandledTriggerTtlSeconds = 900
 $HandledStatusTtlSeconds = 86400
+$Script:TargetCodexWindowKey = $null
 
 function Get-RootElement {
   return [System.Windows.Automation.AutomationElement]::RootElement
 }
 
-function Get-CodexWindow {
+function Get-CodexWindowKey {
+  param([System.Windows.Automation.AutomationElement]$Window)
+
+  if (-not $Window) {
+    return ""
+  }
+
+  try {
+    $runtimeId = $Window.GetRuntimeId()
+    if ($runtimeId -and $runtimeId.Length -gt 0) {
+      return "rid:" + ($runtimeId -join ".")
+    }
+  } catch {
+  }
+
+  $bounds = $Window.Current.BoundingRectangle
+  return "bounds:$($Window.Current.Name)|$([math]::Round($bounds.X)),$([math]::Round($bounds.Y)),$([math]::Round($bounds.Width)),$([math]::Round($bounds.Height))"
+}
+
+function Get-CodexWindows {
   $root = Get-RootElement
   $windows = $root.FindAll(
     [System.Windows.Automation.TreeScope]::Children,
     [System.Windows.Automation.Condition]::TrueCondition
   )
 
+  $matchedWindows = @()
   foreach ($window in $windows) {
     if ($window.Current.Name -like "Codex*") {
-      return $window
+      $matchedWindows += $window
     }
+  }
+
+  return $matchedWindows
+}
+
+function Set-TargetCodexWindow {
+  param(
+    [System.Windows.Automation.AutomationElement]$Window,
+    [string]$Reason = ""
+  )
+
+  if (-not $Window) {
+    return
+  }
+
+  $Script:TargetCodexWindowKey = Get-CodexWindowKey $Window
+  $bounds = $Window.Current.BoundingRectangle
+  Write-Log "Target Codex window selected ($Reason): $($Window.Current.Name) @ $([int]$bounds.X),$([int]$bounds.Y),$([int]$bounds.Width),$([int]$bounds.Height)"
+}
+
+function Get-CodexWindow {
+  $windows = @(Get-CodexWindows)
+  if ($windows.Count -eq 0) {
+    throw "Cannot find the Codex window. Open the Codex desktop app first."
+  }
+
+  if ($Script:TargetCodexWindowKey) {
+    foreach ($window in $windows) {
+      if ((Get-CodexWindowKey $window) -eq $Script:TargetCodexWindowKey) {
+        return $window
+      }
+    }
+
+    $Script:TargetCodexWindowKey = $null
+  }
+
+  if ($windows.Count -gt 1) {
+    Write-Log "Multiple Codex windows visible; using first window until a compact trigger selects a target."
+  }
+
+  foreach ($window in $windows) {
+    return $window
   }
 
   throw "Cannot find the Codex window. Open the Codex desktop app first."
@@ -827,37 +890,46 @@ function Set-CodexModel {
 }
 
 function Get-CompactTriggers {
-  $window = Get-CodexWindow
-  $nodes = Get-Descendants $window
   $matchedTriggers = @()
+  $matchedWindow = $null
 
-  foreach ($node in $nodes) {
-    if ($node.Current.ControlType.ProgrammaticName -ne "ControlType.Text") { continue }
+  foreach ($window in @(Get-CodexWindows)) {
+    $nodes = Get-Descendants $window
 
-    $bounds = $node.Current.BoundingRectangle
-    if ($bounds.IsEmpty -or $bounds.Width -le 0 -or $bounds.Height -le 0 -or $bounds.Y -lt -20) { continue }
+    foreach ($node in $nodes) {
+      if ($node.Current.ControlType.ProgrammaticName -ne "ControlType.Text") { continue }
 
-    $name = $node.Current.Name
-    if (-not $name) { continue }
+      $bounds = $node.Current.BoundingRectangle
+      if ($bounds.IsEmpty -or $bounds.Width -le 0 -or $bounds.Height -le 0 -or $bounds.Y -lt -20) { continue }
 
-    if ($name -match "Error running remote compact task:.*backend-api/codex/responses/compact|stream disconnected before completion") {
-      $matchedTriggers += $node
-      continue
+      $name = $node.Current.Name
+      if (-not $name) { continue }
+
+      if ($name -match "Error running remote compact task:.*backend-api/codex/responses/compact|stream disconnected before completion") {
+        if (-not $matchedWindow) { $matchedWindow = $window }
+        $matchedTriggers += $node
+        continue
+      }
+
+      $trimmed = $name.Trim()
+      $isShortStatus = $trimmed.Length -le 48
+      if (-not $isShortStatus) { continue }
+
+      if (
+        $trimmed -eq $TextCompactingA -or
+        $trimmed -eq $TextCompactingB -or
+        $trimmed -eq $TextCompactingC -or
+        $trimmed -match "^(compacting.*context|context.*compacting|auto.*compact)$"
+      ) {
+        if (-not $matchedWindow) { $matchedWindow = $window }
+        $matchedTriggers += $node
+        continue
+      }
     }
+  }
 
-    $trimmed = $name.Trim()
-    $isShortStatus = $trimmed.Length -le 48
-    if (-not $isShortStatus) { continue }
-
-    if (
-      $trimmed -eq $TextCompactingA -or
-      $trimmed -eq $TextCompactingB -or
-      $trimmed -eq $TextCompactingC -or
-      $trimmed -match "^(compacting.*context|context.*compacting|auto.*compact)$"
-    ) {
-      $matchedTriggers += $node
-      continue
-    }
+  if ($matchedWindow) {
+    Set-TargetCodexWindow $matchedWindow "compact trigger"
   }
 
   return $matchedTriggers
@@ -1305,15 +1377,15 @@ if ($SwitchModelOnly) {
 
 do {
   try {
-    $currentModelName = Get-CurrentModelName
-    if ($currentModelName -match "^5\.4-Mini") {
-      Write-Log "Already on GPT-5.4-Mini; not inferring compact completion from stale visible markers."
-      Start-Sleep -Seconds $PollSeconds
-      continue
-    }
-
     $compactTrigger = Get-CompactTrigger
     if ($compactTrigger) {
+      $currentModelName = Get-CurrentModelName
+      if ($currentModelName -match "^5\.4-Mini") {
+        Write-Log "Target window is already on GPT-5.4-Mini; not inferring compact completion from stale visible markers."
+        Start-Sleep -Seconds $PollSeconds
+        continue
+      }
+
       if (Test-HandledTrigger $compactTrigger) {
         Write-Log "Ignoring already-handled compact trigger: $($compactTrigger.Current.Name)"
         Start-Sleep -Seconds $PollSeconds

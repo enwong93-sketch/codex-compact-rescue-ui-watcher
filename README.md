@@ -94,6 +94,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-compact-resc
 
 - This is UI automation, so Codex UI changes can require script updates.
 - Keep the model button and composer visible. Full-screen is fine.
+- Multiple Codex desktop windows are supported. The watcher scans all visible `Codex*` windows and locks each recovery round to the window where it found the compact trigger.
 - The watcher suppresses the same visible compact error for 15 minutes after a successful recovery, so old error text does not trigger another round. After each recovery it marks every currently visible compacting status as handled until those UI elements disappear; a later newly created status marker can still start a real new round.
 - By default, recovery sends `繼續` after switching back to GPT-5.5. Use `-NoFinalResume` only if you explicitly want the watcher to stop after switching models.
 - Completion is not guessed by a fixed timer. The watcher records existing compact markers and post-compact ready markers, treats `上下文已自動精簡` only as a candidate, then waits for a new ready marker such as `已引導對話` before switching back.
