@@ -455,6 +455,27 @@ function Get-VisibleMenuItemNames {
   return ($items -join "; ")
 }
 
+function Set-ClipboardTextWithRetry {
+  param(
+    [string]$Text,
+    [int]$Attempts = 20
+  )
+
+  $lastError = ""
+  for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+    try {
+      [System.Windows.Forms.Clipboard]::SetText($Text, [System.Windows.Forms.TextDataFormat]::UnicodeText)
+      return $true
+    } catch {
+      $lastError = $_.Exception.Message
+      Start-Sleep -Milliseconds ([math]::Min(1000, 100 + ($attempt * 75)))
+    }
+  }
+
+  Write-Log "Clipboard SetText failed after $Attempts attempt(s): $lastError"
+  return $false
+}
+
 function Send-Text {
   param([string]$Text)
 
@@ -463,10 +484,22 @@ function Send-Text {
     return
   }
 
-  [System.Windows.Forms.Clipboard]::SetText($Text)
-  Start-Sleep -Milliseconds 100
-  [System.Windows.Forms.SendKeys]::SendWait("^v")
-  Start-Sleep -Milliseconds 100
+  if (Set-ClipboardTextWithRetry $Text) {
+    Start-Sleep -Milliseconds 150
+    [System.Windows.Forms.SendKeys]::SendWait("^v")
+    Start-Sleep -Milliseconds 150
+    [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+    return
+  }
+
+  $fallbackText = $Text
+  if ($Text -eq $TextContinue -or $Text -eq $TextContinueTask -or $Text -notmatch "^[ -~]+$") {
+    $fallbackText = "continue"
+  }
+
+  Write-Log "Clipboard unavailable; using keyboard fallback text: $fallbackText"
+  [System.Windows.Forms.SendKeys]::SendWait($fallbackText)
+  Start-Sleep -Milliseconds 150
   [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
 }
 

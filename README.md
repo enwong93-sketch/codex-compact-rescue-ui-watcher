@@ -99,6 +99,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-compact-resc
 - Completion is not guessed by a fixed timer. The watcher records existing compact markers and post-compact ready markers, treats `上下文已自動精簡` only as a candidate, then waits for a new ready marker such as `已引導對話` before switching back.
 - After switching back to GPT-5.5, the watcher waits for the model button to confirm the change, sends final `繼續` once, and then waits for proof that the run started, such as a stop/pause control or `正在思考` / `正在執行` status.
 - If the watcher starts while the thread is already on GPT-5.4-Mini, it will not infer completion from old visible `上下文已自動精簡` markers. It also will not switch back to GPT-5.5 from `上下文已自動精簡` alone; a new post-compact ready marker is required. This avoids stopping an active compact in the middle.
+- Text sending uses the clipboard for Chinese input and retries if Windows reports the clipboard is busy. If the clipboard remains unavailable, the watcher types `continue` as a fallback instead of aborting the recovery.
 
 ## Troubleshooting
 

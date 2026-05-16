@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.12
+
+- Retries Windows clipboard writes when sending `繼續`, fixing intermittent `Clipboard.SetText` failures.
+- Falls back to typing ASCII `continue` if the clipboard remains unavailable, so recovery does not get stuck on GPT-5.4-Mini.
+
 ## 0.1.11
 
 - Sends the final `繼續` only once after returning to GPT-5.5, then waits longer for Codex to load and confirm the run started.
