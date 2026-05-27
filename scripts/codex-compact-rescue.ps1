@@ -569,7 +569,14 @@ function Send-Text {
 
 function Get-ModelButton {
   $window = Get-CodexWindow
-  $nodes = Get-Descendants $window
+  $buttonCondition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
+    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+    [System.Windows.Automation.ControlType]::Button
+  )
+  $nodes = $window.FindAll(
+    [System.Windows.Automation.TreeScope]::Descendants,
+    $buttonCondition
+  )
   $button = Find-Node $nodes "^(5\.5|5\.4|GPT)" "ControlType\.Button" -VisibleOnly -EnabledOnly
 
   if (-not $button) {
@@ -663,63 +670,61 @@ function Set-CodexModelWithKeyboard {
 
   Close-OpenMenu
 
-  $currentBefore = Get-CurrentModelName
-  Open-ModelMenu -SkipVerify
-
-  $toModelFamily = @("{DOWN}")
-  if ($currentBefore -notmatch [regex]::Escape($TextXHigh)) {
-    $toModelFamily = @("{DOWN}", "{DOWN}")
-  }
-
   if ($Model -eq "5.4-Mini") {
-    Send-KeySequence ($toModelFamily + @("{RIGHT}", "{DOWN}", "{DOWN}", "{RIGHT}", "{ENTER}"))
-    Start-Sleep -Seconds 1
+    foreach ($sequenceSpec in @(
+      "{DOWN}|{RIGHT}|{DOWN}|{DOWN}|{RIGHT}|{ENTER}",
+      "{DOWN}|{DOWN}|{RIGHT}|{DOWN}|{DOWN}|{RIGHT}|{ENTER}"
+    )) {
+      Close-OpenMenu
+      Open-ModelMenu -SkipVerify
+      Send-KeySequence ($sequenceSpec -split "\|")
+      Start-Sleep -Seconds 1
 
-    $current = Get-CurrentModelName
-    if (Test-ModelNameMatches $Model $current) {
-      Write-Log "Keyboard model switch confirmed: $current"
-      return $true
-    }
+      $current = Get-CurrentModelName
+      if (Test-ModelNameMatches $Model $current) {
+        Write-Log "Keyboard model switch confirmed: $current"
+        return $true
+      }
 
-    if (Wait-ForModelName $Model 5) {
-      return $true
+      if (Wait-ForModelName $Model 5) {
+        return $true
+      }
+
+      Write-Log "Keyboard sequence did not confirm. Current model button: $current"
     }
 
     Close-OpenMenu
-    Write-Log "Keyboard model switch did not confirm. Current model button: $current"
+    Write-Log "Keyboard model switch did not confirm."
     return $false
   }
 
-  foreach ($sequenceSpec in @(
-    "{RIGHT}|{ENTER}",
-    "{RIGHT}|{HOME}|{ENTER}",
-    "{RIGHT}|{UP}|{ENTER}",
-    "{RIGHT}|{DOWN}|{ENTER}"
-  )) {
-    Close-OpenMenu
-    $currentBefore = Get-CurrentModelName
-    Open-ModelMenu -SkipVerify
+  foreach ($prefixSpec in @("{DOWN}", "{DOWN}|{DOWN}")) {
+    foreach ($sequenceSpec in @(
+      "{RIGHT}|{ENTER}",
+      "{RIGHT}|{HOME}|{ENTER}",
+      "{RIGHT}|{UP}|{ENTER}",
+      "{RIGHT}|{DOWN}|{ENTER}"
+    )) {
+      Close-OpenMenu
+      Open-ModelMenu -SkipVerify
 
-    $toModelFamily = @("{DOWN}")
-    if ($currentBefore -notmatch [regex]::Escape($TextXHigh)) {
-      $toModelFamily = @("{DOWN}", "{DOWN}")
+      $modelFamilySequence = $prefixSpec -split "\|"
+      $modelSubmenuSequence = $sequenceSpec -split "\|"
+      Send-KeySequence ($modelFamilySequence + $modelSubmenuSequence)
+      Start-Sleep -Seconds 1
+
+      $current = Get-CurrentModelName
+      if (Test-ModelNameMatches $Model $current) {
+        Write-Log "Keyboard model switch confirmed: $current"
+        return $true
+      }
+
+      if (Wait-ForModelName $Model 5) {
+        return $true
+      }
+
+      Write-Log "Keyboard sequence did not confirm. Current model button: $current"
     }
-
-    $modelSubmenuSequence = $sequenceSpec -split "\|"
-    Send-KeySequence ($toModelFamily + $modelSubmenuSequence)
-    Start-Sleep -Seconds 1
-
-    $current = Get-CurrentModelName
-    if (Test-ModelNameMatches $Model $current) {
-      Write-Log "Keyboard model switch confirmed: $current"
-      return $true
-    }
-
-    if (Wait-ForModelName $Model 5) {
-      return $true
-    }
-
-    Write-Log "Keyboard sequence did not confirm. Current model button: $current"
   }
 
   Close-OpenMenu
@@ -835,18 +840,27 @@ function Set-CodexModel {
     return
   }
 
-  $current = Get-CurrentModelName
-  if (Test-ModelNameMatches $Model $current) {
-    Write-Log "Already on target model: $current"
-    return
-  }
-
   if ($Model -eq "5.5") {
-    for ($attempt = 1; $attempt -le 4; $attempt++) {
+    for ($attempt = 1; $attempt -le $ModelSwitchAttempts; $attempt++) {
       Write-Log "Switch model to $targetName attempt $attempt."
 
-      if (Set-CodexModelWithKeyboard $Model) {
-        return
+      try {
+        $current = Get-CurrentModelName
+        if (Test-ModelNameMatches $Model $current) {
+          Write-Log "Already on target model: $current"
+          return
+        }
+      } catch {
+        Write-Log "Current model read attempt $attempt failed: $($_.Exception.Message)"
+      }
+
+      try {
+        if (Set-CodexModelWithKeyboard $Model) {
+          return
+        }
+      } catch {
+        Write-Log "Keyboard model switch attempt $attempt failed: $($_.Exception.Message)"
+        Close-OpenMenu
       }
       if (Wait-ForModelName $Model 3) {
         return
@@ -874,6 +888,16 @@ function Set-CodexModel {
 
   for ($attempt = 1; $attempt -le $ModelSwitchAttempts; $attempt++) {
     Write-Log "Switch model to $targetName attempt $attempt."
+
+    try {
+      $current = Get-CurrentModelName
+      if (Test-ModelNameMatches $Model $current) {
+        Write-Log "Already on target model: $current"
+        return
+      }
+    } catch {
+      Write-Log "Current model read attempt $attempt failed: $($_.Exception.Message)"
+    }
 
     try {
       if (Set-CodexModelWithKeyboard $Model) {

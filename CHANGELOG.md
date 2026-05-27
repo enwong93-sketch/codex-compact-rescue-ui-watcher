@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.15
+
+- Starts model-switch attempts before doing a current-model precheck, so retry logging begins even when Codex is busy.
+- Narrows model-button lookup to visible buttons instead of scanning every descendant node, reducing UI Automation stalls during compact recovery.
+- Removes the keyboard switcher's dependency on reading the current reasoning level before navigating the model menu.
+
 ## 0.1.14
 
 - Retries switching to GPT-5.4-Mini up to 5 times, using keyboard, anchored-click, and mouse fallback paths on each attempt.
