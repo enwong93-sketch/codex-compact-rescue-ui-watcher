@@ -76,13 +76,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-compact-resc
   -PollSeconds 5 `
   -CompactWaitSeconds 600 `
   -AfterStopDelaySeconds 1 `
-  -RoundCooldownSeconds 60
+  -RoundCooldownSeconds 60 `
+  -ModelSwitchAttempts 5
 ```
 
 - `-PollSeconds`: how often to scan the visible Codex UI.
 - `-CompactWaitSeconds`: max wait for a new compact completion marker.
 - `-AfterStopDelaySeconds`: wait after clicking Stop/Pause before switching models.
 - `-RoundCooldownSeconds`: wait after a completed recovery before watching again.
+- `-ModelSwitchAttempts`: max attempts for switching to the target model. Default: 5.
 - `-FinalResumeConfirmSeconds`: after sending the final `繼續` once, wait this long for Codex to show that the run started. Default: 90.
 - `-ResumeText`: text sent when no clickable continue button is available. Default: `繼續`.
 - `-FinalResume`: legacy flag; final `繼續` is now on by default.
@@ -99,6 +101,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-compact-resc
 - By default, recovery sends `繼續` after switching back to GPT-5.5. Use `-NoFinalResume` only if you explicitly want the watcher to stop after switching models.
 - Completion is not guessed by a fixed timer. The watcher records existing compact markers and post-compact ready markers, treats `上下文已自動精簡` only as a candidate, then waits for a new ready marker such as `已引導對話` before switching back.
 - After switching back to GPT-5.5, the watcher waits for the model button to confirm the change, sends final `繼續` once, and then waits for proof that the run started, such as a stop/pause control or `正在思考` / `正在執行` status.
+- Switching to GPT-5.4-Mini is retried. Each attempt tries keyboard navigation, anchored clicks, and mouse/menu fallback before waiting and trying again.
 - If the watcher starts while the thread is already on GPT-5.4-Mini, it will not infer completion from old visible `上下文已自動精簡` markers. It also will not switch back to GPT-5.5 from `上下文已自動精簡` alone; a new post-compact ready marker is required. This avoids stopping an active compact in the middle.
 - Text sending uses the clipboard for Chinese input and retries if Windows reports the clipboard is busy. If the clipboard remains unavailable, the watcher types `continue` as a fallback instead of aborting the recovery.
 

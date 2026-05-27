@@ -4,6 +4,7 @@ param(
   [int]$AfterStopDelaySeconds = 1,
   [int]$RoundCooldownSeconds = 60,
   [int]$FinalResumeConfirmSeconds = 90,
+  [int]$ModelSwitchAttempts = 5,
   [string]$ResumeText = "",
   [ValidateSet("", "5.4-Mini", "5.5")]
   [string]$SwitchModelOnly = "",
@@ -871,21 +872,50 @@ function Set-CodexModel {
     throw "Model switch to $targetName was not confirmed. Speed/reasoning fallback was skipped."
   }
 
-  if (Set-CodexModelWithKeyboard $Model) {
-    return
-  }
-  if (Wait-ForModelName $Model 3) {
-    return
+  for ($attempt = 1; $attempt -le $ModelSwitchAttempts; $attempt++) {
+    Write-Log "Switch model to $targetName attempt $attempt."
+
+    try {
+      if (Set-CodexModelWithKeyboard $Model) {
+        return
+      }
+    } catch {
+      Write-Log "Keyboard model switch attempt $attempt failed: $($_.Exception.Message)"
+      Close-OpenMenu
+    }
+    if (Wait-ForModelName $Model 3) {
+      return
+    }
+
+    try {
+      if (Set-CodexModelWithAnchoredClicks $Model) {
+        return
+      }
+    } catch {
+      Write-Log "Anchored model switch attempt $attempt failed: $($_.Exception.Message)"
+      Close-OpenMenu
+    }
+    if (Wait-ForModelName $Model 3) {
+      return
+    }
+
+    try {
+      if (Set-CodexModelWithMouse $Model) {
+        return
+      }
+    } catch {
+      Write-Log "Mouse model switch attempt $attempt failed: $($_.Exception.Message)"
+      Close-OpenMenu
+    }
+    if (Wait-ForModelName $Model 3) {
+      return
+    }
+
+    Close-OpenMenu
+    Start-Sleep -Seconds 2
   }
 
-  if (Set-CodexModelWithAnchoredClicks $Model) {
-    return
-  }
-  if (Wait-ForModelName $Model 3) {
-    return
-  }
-
-  [System.Windows.Forms.SendKeys]::SendWait("{ESC}")
+  Close-OpenMenu
   throw "Model switch to $targetName was not confirmed."
 }
 
@@ -1367,7 +1397,7 @@ function Invoke-Recovery {
   Write-Log "Recovery flow finished."
 }
 
-Write-Log "Codex compact rescue watcher started. PollSeconds=$PollSeconds RoundCooldownSeconds=$RoundCooldownSeconds Once=$Once FinalResume=$ShouldFinalResume WhatIf=$WhatIf"
+Write-Log "Codex compact rescue watcher started. PollSeconds=$PollSeconds RoundCooldownSeconds=$RoundCooldownSeconds ModelSwitchAttempts=$ModelSwitchAttempts Once=$Once FinalResume=$ShouldFinalResume WhatIf=$WhatIf"
 
 if ($SwitchModelOnly) {
   Set-CodexModel $SwitchModelOnly

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.14
+
+- Retries switching to GPT-5.4-Mini up to 5 times, using keyboard, anchored-click, and mouse fallback paths on each attempt.
+- Adds `-ModelSwitchAttempts` so slow UI or network lag during model switching does not abort the recovery after one failed attempt.
+
 ## 0.1.13
 
 - Scans all visible Codex desktop windows for compact triggers instead of only the first `Codex*` window.
