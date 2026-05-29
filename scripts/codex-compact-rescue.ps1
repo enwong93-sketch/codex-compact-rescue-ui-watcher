@@ -1350,7 +1350,7 @@ function Focus-Composer {
 function Click-Continue-Or-Send {
   param(
     [string]$Text,
-    [switch]$RetryIfNotStarted
+    [switch]$ConfirmRunStarted
   )
 
   $window = Get-CodexWindow
@@ -1369,7 +1369,7 @@ function Click-Continue-Or-Send {
   Focus-Composer $window | Out-Null
   Send-Text $Text
 
-  if (-not $RetryIfNotStarted) {
+  if (-not $ConfirmRunStarted) {
     return
   }
 
@@ -1382,10 +1382,7 @@ function Click-Continue-Or-Send {
     Start-Sleep -Seconds 1
   }
 
-  Write-Log "Resume send was not confirmed; refocusing composer and sending once more."
-  $window = Get-CodexWindow
-  Focus-Composer $window | Out-Null
-  Send-Text $Text
+  Write-Log "Resume send was not confirmed after one send; not sending another continue."
 }
 
 function Test-RunStartedVisible {
@@ -1465,7 +1462,7 @@ function Invoke-Recovery {
   $markerBaseline = Get-CompactMarkerSnapshot
   $readyBaseline = Get-PostCompactReadySnapshot
   Write-Log "Waiting for compact to finish after 5.4-Mini. BaselineCount=$($markerBaseline.Count) BaselineMaxY=$($markerBaseline.MaxY) BaselineReadyCount=$($readyBaseline.Count) BaselineReadyMaxY=$($readyBaseline.MaxY)"
-  Click-Continue-Or-Send $ResumeText -RetryIfNotStarted
+  Click-Continue-Or-Send $ResumeText -ConfirmRunStarted
   $compactCompleted = Wait-For-NewCompactMarker $CompactWaitSeconds $markerBaseline.Count $markerBaseline.MaxY $markerBaseline.KeyMap $readyBaseline.Count $readyBaseline.MaxY $readyBaseline.KeyMap
   if (-not $compactCompleted) {
     Write-Log "Compact completion was not confirmed; leaving model on GPT-5.4-Mini and not stopping the active run."

@@ -103,7 +103,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-compact-resc
 - After switching back to GPT-5.5, the watcher waits for the model button to confirm the change, sends final `繼續` once, and then waits for proof that the run started, such as a stop/pause control or `正在思考` / `正在執行` status.
 - Switching to GPT-5.4-Mini is retried. Each attempt tries keyboard navigation, anchored clicks, and mouse/menu fallback before waiting and trying again.
 - Model switching now starts the retry attempt before reading the current model state, and model-button lookup scans visible buttons only. This reduces stalls when Codex is temporarily busy during compacting.
-- When sending the first `繼續` after switching to GPT-5.4-Mini, the watcher focuses the lower composer only. If no run-start signal appears, it refocuses the composer and sends `繼續` one more time. Final resume after switching back to GPT-5.5 is still sent once.
+- When sending the first `繼續` after switching to GPT-5.4-Mini, the watcher focuses the lower composer only. If no run-start signal appears, it logs that the send was not confirmed but does not send another `繼續`. Final resume after switching back to GPT-5.5 is also single-send.
 - If the watcher starts while the thread is already on GPT-5.4-Mini, it will not infer completion from old visible `上下文已自動精簡` markers. It also will not switch back to GPT-5.5 from `上下文已自動精簡` alone; a new post-compact ready marker is required. This avoids stopping an active compact in the middle.
 - Text sending uses the clipboard for Chinese input and retries if Windows reports the clipboard is busy. If the clipboard remains unavailable, the watcher types `continue` as a fallback instead of aborting the recovery.
 

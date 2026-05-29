@@ -1,10 +1,15 @@
 # Changelog
 
+## 0.1.17
+
+- Removes the automatic second `繼續` after switching to GPT-5.4-Mini.
+- Keeps the lower-composer focus fix, but confirmation now only logs if the first send was not visibly confirmed.
+
 ## 0.1.16
 
 - Fixes resume text being sent to the wrong place after switching to GPT-5.4-Mini.
 - Restricts composer detection to the lower part of the target Codex window and removes the overly broad `Message` match that could select old chat content.
-- Adds a bottom-input fallback click and one guarded retry for the first compact resume if no stop/pause control appears after sending `繼續`.
+- Adds a bottom-input fallback click before sending the first compact resume.
 
 ## 0.1.15
 
