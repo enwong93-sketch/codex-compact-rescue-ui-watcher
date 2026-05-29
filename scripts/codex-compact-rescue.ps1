@@ -1302,8 +1302,56 @@ function Stop-If-Running {
   return $false
 }
 
+function Find-ComposerNode {
+  param(
+    [object]$Nodes,
+    [System.Windows.Automation.AutomationElement]$Window
+  )
+
+  $windowBounds = $Window.Current.BoundingRectangle
+  $minY = $windowBounds.Y + ($windowBounds.Height * 0.55)
+  $editorRegex = ("ProseMirror|^" + [regex]::Escape($TextComposerPlaceholder) + "$")
+  $matchedNodes = @()
+
+  foreach ($node in $Nodes) {
+    $name = $node.Current.Name
+    $type = $node.Current.ControlType.ProgrammaticName
+    $bounds = $node.Current.BoundingRectangle
+
+    if (-not $name) { continue }
+    if ($name -notmatch $editorRegex) { continue }
+    if ($type -notmatch "ControlType\.Group|ControlType\.Edit|ControlType\.Text|ControlType\.Document") { continue }
+    if ($bounds.IsEmpty -or $bounds.Width -le 0 -or $bounds.Height -le 0 -or $bounds.Y -lt $minY) { continue }
+
+    $matchedNodes += $node
+  }
+
+  return $matchedNodes | Sort-Object { $_.Current.BoundingRectangle.Y } -Descending | Select-Object -First 1
+}
+
+function Focus-Composer {
+  param([System.Windows.Automation.AutomationElement]$Window)
+
+  $nodes = Get-Descendants $Window
+  $editor = Find-ComposerNode $nodes $Window
+  if ($editor) {
+    Click-Node $editor "composer"
+    return $true
+  }
+
+  $bounds = $Window.Current.BoundingRectangle
+  $fallbackX = $bounds.X + ($bounds.Width * 0.5)
+  $fallbackY = $bounds.Y + $bounds.Height - 95
+  Write-Log "Composer UI node not found; using bottom input fallback."
+  Click-Point $fallbackX $fallbackY "composer fallback"
+  return $false
+}
+
 function Click-Continue-Or-Send {
-  param([string]$Text)
+  param(
+    [string]$Text,
+    [switch]$RetryIfNotStarted
+  )
 
   $window = Get-CodexWindow
   $nodes = Get-Descendants $window
@@ -1318,12 +1366,25 @@ function Click-Continue-Or-Send {
     return
   }
 
-  $editorRegex = ("ProseMirror|" + [regex]::Escape($TextComposerPlaceholder) + "|Message")
-  $editor = Find-Node $nodes $editorRegex "ControlType\.Group|ControlType\.Edit|ControlType\.Text" -VisibleOnly
-  if ($editor) {
-    Click-Node $editor "composer"
+  Focus-Composer $window | Out-Null
+  Send-Text $Text
+
+  if (-not $RetryIfNotStarted) {
+    return
   }
 
+  $deadline = (Get-Date).AddSeconds(8)
+  while ((Get-Date) -lt $deadline) {
+    if (Test-StopVisible) {
+      Write-Log "Resume send confirmed by visible stop/pause control."
+      return
+    }
+    Start-Sleep -Seconds 1
+  }
+
+  Write-Log "Resume send was not confirmed; refocusing composer and sending once more."
+  $window = Get-CodexWindow
+  Focus-Composer $window | Out-Null
   Send-Text $Text
 }
 
@@ -1404,7 +1465,7 @@ function Invoke-Recovery {
   $markerBaseline = Get-CompactMarkerSnapshot
   $readyBaseline = Get-PostCompactReadySnapshot
   Write-Log "Waiting for compact to finish after 5.4-Mini. BaselineCount=$($markerBaseline.Count) BaselineMaxY=$($markerBaseline.MaxY) BaselineReadyCount=$($readyBaseline.Count) BaselineReadyMaxY=$($readyBaseline.MaxY)"
-  Click-Continue-Or-Send $ResumeText
+  Click-Continue-Or-Send $ResumeText -RetryIfNotStarted
   $compactCompleted = Wait-For-NewCompactMarker $CompactWaitSeconds $markerBaseline.Count $markerBaseline.MaxY $markerBaseline.KeyMap $readyBaseline.Count $readyBaseline.MaxY $readyBaseline.KeyMap
   if (-not $compactCompleted) {
     Write-Log "Compact completion was not confirmed; leaving model on GPT-5.4-Mini and not stopping the active run."

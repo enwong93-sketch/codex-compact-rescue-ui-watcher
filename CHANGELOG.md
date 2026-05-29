@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.16
+
+- Fixes resume text being sent to the wrong place after switching to GPT-5.4-Mini.
+- Restricts composer detection to the lower part of the target Codex window and removes the overly broad `Message` match that could select old chat content.
+- Adds a bottom-input fallback click and one guarded retry for the first compact resume if no stop/pause control appears after sending `繼續`.
+
 ## 0.1.15
 
 - Starts model-switch attempts before doing a current-model precheck, so retry logging begins even when Codex is busy.
