@@ -924,15 +924,15 @@ function Set-CodexModel {
       }
 
       try {
-        if (Set-CodexModelWithMouse $Model) {
-          return
-        }
-        if (Wait-ForModelName $Model 3) {
+        if (Set-CodexModelWithAnchoredClicks $Model) {
           return
         }
       } catch {
-        Write-Log "Mouse model switch attempt $attempt failed: $($_.Exception.Message)"
+        Write-Log "Anchored model switch attempt $attempt failed: $($_.Exception.Message)"
         Close-OpenMenu
+      }
+      if (Wait-ForModelName $Model 3) {
+        return
       }
 
       Close-OpenMenu
@@ -954,18 +954,6 @@ function Set-CodexModel {
       }
     } catch {
       Write-Log "Current model read attempt $attempt failed: $($_.Exception.Message)"
-    }
-
-    try {
-      if (Set-CodexModelWithMouse $Model) {
-        return
-      }
-    } catch {
-      Write-Log "Mouse model switch attempt $attempt failed: $($_.Exception.Message)"
-      Close-OpenMenu
-    }
-    if (Wait-ForModelName $Model 3) {
-      return
     }
 
     try {
@@ -993,11 +981,11 @@ function Set-CodexModel {
     }
 
     try {
-      if (Set-CodexModelWithMouse $Model) {
+      if (Set-CodexModelWithKeyboard $Model) {
         return
       }
     } catch {
-      Write-Log "Mouse model switch attempt $attempt failed: $($_.Exception.Message)"
+      Write-Log "Keyboard retry model switch attempt $attempt failed: $($_.Exception.Message)"
       Close-OpenMenu
     }
     if (Wait-ForModelName $Model 3) {

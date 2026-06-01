@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.20
+
+- Removes the UIA menu-scan mouse path from automatic model switching. The watcher now uses keyboard-first switching with anchored-click fallback for both GPT-5.4-Mini and GPT-5.5.
+- Fixes hangs where the watcher clicked the model menu and then stopped before sending any keyboard navigation.
+
 ## 0.1.19
 
 - Fixes a model-menu stall introduced by exact model selection: after opening the Codex model menu, the watcher now scans only visible `MenuItem` controls instead of walking the full desktop UI tree.
