@@ -106,6 +106,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-compact-resc
 - After switching back to GPT-5.5, the watcher waits for the model button to confirm the change, sends final `繼續` once, and then waits for proof that the run started, such as a stop/pause control or `正在思考` / `正在執行` status.
 - If a paused `/goal` row appears after the final `繼續`, the watcher clicks that row's resume/play control. It does not send another text `繼續`.
 - Switching to GPT-5.4-Mini is retried. Each attempt now prefers exact `GPT-5.4-Mini` menu-item selection before keyboard or anchored fallbacks.
+- After the model menu is open, verification scans only visible menu items instead of the full desktop UI tree. This avoids stalls when other large apps or multiple Codex windows are visible.
 - Coordinate fallbacks must confirm the target model before returning success. If Codex selects another model such as GPT-5.2, the watcher keeps retrying and will not continue as if GPT-5.4-Mini was selected.
 - Model switching now starts the retry attempt before reading the current model state, and model-button lookup scans visible buttons only. This reduces stalls when Codex is temporarily busy during compacting.
 - When sending the first `繼續` after switching to GPT-5.4-Mini, the watcher focuses the lower composer only. If no run-start signal appears, it logs that the send was not confirmed but does not send another `繼續`. Final resume after switching back to GPT-5.5 is also single-send.

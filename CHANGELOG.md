@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.19
+
+- Fixes a model-menu stall introduced by exact model selection: after opening the Codex model menu, the watcher now scans only visible `MenuItem` controls instead of walking the full desktop UI tree.
+- Applies the same narrow visible-menu scan to model-menu verification and retry checks, reducing hangs when Chrome, AIRI, or multiple Codex windows are open.
+
 ## 0.1.18
 
 - Adds `/goal` support after the final GPT-5.5 resume: if a visible goal-paused row appears, the watcher clicks the row's resume/play control instead of sending another text `繼續`.

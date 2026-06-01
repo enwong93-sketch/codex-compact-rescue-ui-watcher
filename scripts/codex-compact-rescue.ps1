@@ -183,6 +183,36 @@ function Get-AllUiNodes {
   )
 }
 
+function Get-VisibleMenuItems {
+  $root = Get-RootElement
+  $menuItemCondition = New-Object System.Windows.Automation.PropertyCondition -ArgumentList @(
+    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+    [System.Windows.Automation.ControlType]::MenuItem
+  )
+
+  $nodes = $root.FindAll(
+    [System.Windows.Automation.TreeScope]::Descendants,
+    $menuItemCondition
+  )
+
+  $visibleItems = @()
+  foreach ($node in $nodes) {
+    $bounds = $node.Current.BoundingRectangle
+    if (
+      $node.Current.Name -and
+      $node.Current.IsEnabled -and
+      -not $bounds.IsEmpty -and
+      $bounds.Width -gt 0 -and
+      $bounds.Height -gt 0 -and
+      $bounds.Y -gt -20
+    ) {
+      $visibleItems += $node
+    }
+  }
+
+  return $visibleItems
+}
+
 function Find-Node {
   param(
     [object]$Nodes,
@@ -478,7 +508,7 @@ function Find-TargetMenuItemAfterHover {
   )
 
   for ($index = 0; $index -lt $Attempts; $index++) {
-    $allNodes = Get-AllUiNodes
+    $allNodes = Get-VisibleMenuItems
     $target = Find-VisibleMenuItemExact $allNodes $TargetName
     if ($target) {
       return $target
@@ -517,7 +547,7 @@ function Open-SubmenuAndFindTarget {
 
 function Get-VisibleMenuItemNames {
   $items = @()
-  foreach ($node in (Get-AllUiNodes)) {
+  foreach ($node in (Get-VisibleMenuItems)) {
     $bounds = $node.Current.BoundingRectangle
     if (
       $node.Current.ControlType.ProgrammaticName -eq "ControlType.MenuItem" -and
@@ -657,7 +687,7 @@ function Open-ModelMenu {
     return
   }
 
-  $items = Get-AllUiNodes
+  $items = Get-VisibleMenuItems
   $modelItem = Find-Node $items "^GPT-5\.(4|5)$" "ControlType\.MenuItem" -VisibleOnly -EnabledOnly
   if ($modelItem) {
     return
@@ -666,7 +696,7 @@ function Open-ModelMenu {
   Click-BoundsAtFraction $bounds 0.85 $name "model menu retry"
   Start-Sleep -Milliseconds 500
 
-  $items = Get-AllUiNodes
+  $items = Get-VisibleMenuItems
   $modelItem = Find-Node $items "^GPT-5\.(4|5)$" "ControlType\.MenuItem" -VisibleOnly -EnabledOnly
   if ($modelItem) {
     return
@@ -755,7 +785,8 @@ function Set-CodexModelWithMouse {
   $targetName = "GPT-$Model"
   Open-ModelMenu
 
-  $allNodes = Get-AllUiNodes
+  Write-Log "Scanning visible menu items for model switch."
+  $allNodes = Get-VisibleMenuItems
   $currentModelItem = $null
   foreach ($modelMenuName in @("GPT-5.5", "GPT-5.4-Mini", "GPT-5.4")) {
     $currentModelItem = Find-VisibleMenuItemExact $allNodes $modelMenuName
@@ -797,7 +828,7 @@ function Set-CodexModelWithMouse {
   }
 
   if (-not $target -and $Model -eq "5.4-Mini") {
-    $allNodes = Get-AllUiNodes
+    $allNodes = Get-VisibleMenuItems
     $otherModels = Find-VisibleMenuItemExact $allNodes $TextOtherModels
     if ($otherModels) {
       $otherBounds = $otherModels.Current.BoundingRectangle
