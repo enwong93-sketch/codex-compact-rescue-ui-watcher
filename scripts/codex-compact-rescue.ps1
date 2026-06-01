@@ -4,12 +4,14 @@ param(
   [int]$AfterStopDelaySeconds = 1,
   [int]$RoundCooldownSeconds = 60,
   [int]$FinalResumeConfirmSeconds = 90,
+  [int]$GoalResumeWaitSeconds = 30,
   [int]$ModelSwitchAttempts = 5,
   [string]$ResumeText = "",
   [ValidateSet("", "5.4-Mini", "5.5")]
   [string]$SwitchModelOnly = "",
   [switch]$Once,
   [switch]$NoFinalResume,
+  [switch]$NoGoalResume,
   [switch]$FinalResume,
   [switch]$WhatIf
 )
@@ -51,6 +53,17 @@ $TextCompactingC = U @(0x6b63, 0x5728, 0x81ea, 0x52d5, 0x7cbe, 0x7c21, 0x4e0a, 0
 $TextStop = U @(0x505c, 0x6b62)
 $TextPause = U @(0x66ab, 0x505c)
 $TextContinueTask = U @(0x7e7c, 0x7e8c, 0x5b8c, 0x6210, 0x4efb, 0x52d9)
+$TextGoal = U @(0x76ee, 0x6a19)
+$TextGoalPaused = U @(0x76ee, 0x6a19, 0x5df2, 0x66ab, 0x505c)
+$TextGoalContinue = U @(0x76ee, 0x6a19, 0x7e7c, 0x7e8c)
+$TextDelete = U @(0x522a, 0x9664)
+$TextRemove = U @(0x79fb, 0x9664)
+$TextTrash = U @(0x5783, 0x573e)
+$TextEdit = U @(0x7de8, 0x8f2f)
+$TextMore = U @(0x66f4, 0x591a)
+$TextOpen = U @(0x6253, 0x958b)
+$TextExpand = U @(0x5c55, 0x958b)
+$TextCollapse = U @(0x6536, 0x5408)
 $TextComposerPlaceholder = U @(0x8981, 0x6c42, 0x5f8c, 0x7e8c, 0x8ddf, 0x9032, 0x8b8a, 0x66f4)
 $TextThinking = U @(0x6b63, 0x5728, 0x601d, 0x8003)
 $TextRunning = U @(0x6b63, 0x5728, 0x57f7, 0x884c)
@@ -62,6 +75,7 @@ if (-not $ResumeText) {
 }
 
 $ShouldFinalResume = -not $NoFinalResume
+$ShouldGoalResume = -not $NoGoalResume
 
 $HandledTriggerKeys = @{}
 $HandledTriggerTtlSeconds = 900
@@ -796,7 +810,19 @@ function Set-CodexModelWithMouse {
         $fallbackY = $otherBounds.Y - 51
         Click-Point $fallbackX $fallbackY "$targetName fallback"
         Start-Sleep -Seconds 1
-        return
+
+        $current = Get-CurrentModelName
+        if (Test-ModelNameMatches $Model $current) {
+          Write-Log "Mouse fallback model switch confirmed: $current"
+          return $true
+        }
+
+        if (Wait-ForModelName $Model 5) {
+          return $true
+        }
+
+        Write-Log "Mouse fallback did not confirm $targetName. Current model button: $current"
+        return $false
       }
     }
   }
@@ -897,6 +923,18 @@ function Set-CodexModel {
       }
     } catch {
       Write-Log "Current model read attempt $attempt failed: $($_.Exception.Message)"
+    }
+
+    try {
+      if (Set-CodexModelWithMouse $Model) {
+        return
+      }
+    } catch {
+      Write-Log "Mouse model switch attempt $attempt failed: $($_.Exception.Message)"
+      Close-OpenMenu
+    }
+    if (Wait-ForModelName $Model 3) {
+      return
     }
 
     try {
@@ -1420,6 +1458,105 @@ function Test-RunStartedVisible {
   return $false
 }
 
+function Get-GoalPausedNode {
+  param([object]$Nodes)
+
+  $goalPausedRegex = ("^" + [regex]::Escape($TextGoalPaused) + "|^Goal paused")
+  $matchedNodes = @()
+  foreach ($node in $Nodes) {
+    $name = $node.Current.Name
+    if (-not $name) { continue }
+    if ($name -notmatch $goalPausedRegex) { continue }
+
+    $bounds = $node.Current.BoundingRectangle
+    if ($bounds.IsEmpty -or $bounds.Width -le 0 -or $bounds.Height -le 0 -or $bounds.Y -lt -20) { continue }
+
+    $matchedNodes += $node
+  }
+
+  return $matchedNodes | Sort-Object { $_.Current.BoundingRectangle.Y } -Descending | Select-Object -First 1
+}
+
+function Click-GoalResumeIfPaused {
+  $window = Get-CodexWindow
+  $nodes = Get-Descendants $window
+  $pausedNode = Get-GoalPausedNode $nodes
+  if (-not $pausedNode) {
+    return $false
+  }
+
+  $pausedBounds = $pausedNode.Current.BoundingRectangle
+  $targetY = $pausedBounds.Y + ($pausedBounds.Height / 2)
+  $resumeRegex = (
+    [regex]::Escape($TextGoalContinue) + "|" +
+    [regex]::Escape($TextGoal) + ".*" + [regex]::Escape($TextContinue) + "|" +
+    [regex]::Escape($TextContinue) + ".*" + [regex]::Escape($TextGoal) + "|" +
+    "resume.*goal|goal.*resume|continue.*goal|goal.*continue|^Resume$|^Continue$"
+  )
+  $excludeRegex = (
+    "delete|remove|trash|edit|more|open|expand|collapse|" +
+    [regex]::Escape($TextDelete) + "|" +
+    [regex]::Escape($TextRemove) + "|" +
+    [regex]::Escape($TextTrash) + "|" +
+    [regex]::Escape($TextEdit) + "|" +
+    [regex]::Escape($TextMore) + "|" +
+    [regex]::Escape($TextOpen) + "|" +
+    [regex]::Escape($TextExpand) + "|" +
+    [regex]::Escape($TextCollapse)
+  )
+
+  $rowButtons = @()
+  foreach ($node in $nodes) {
+    if ($node.Current.ControlType.ProgrammaticName -ne "ControlType.Button") { continue }
+    if (-not $node.Current.IsEnabled) { continue }
+
+    $bounds = $node.Current.BoundingRectangle
+    if ($bounds.IsEmpty -or $bounds.Width -le 0 -or $bounds.Height -le 0 -or $bounds.Y -lt -20) { continue }
+
+    $buttonY = $bounds.Y + ($bounds.Height / 2)
+    if ([math]::Abs($buttonY - $targetY) -gt 34) { continue }
+    if (($bounds.X + ($bounds.Width / 2)) -lt $pausedBounds.X) { continue }
+
+    $rowButtons += $node
+  }
+
+  foreach ($button in $rowButtons) {
+    $name = $button.Current.Name
+    if ($name -and $name -match $resumeRegex -and $name -notmatch $excludeRegex) {
+      Click-Node $button "goal resume"
+      return $true
+    }
+  }
+
+  $anonymousButtons = @($rowButtons | Where-Object {
+    $buttonName = $_.Current.Name
+    -not $buttonName -or $buttonName -notmatch $excludeRegex
+  } | Sort-Object { $_.Current.BoundingRectangle.X })
+
+  if ($anonymousButtons.Count -gt 0) {
+    $index = 0
+    if ($anonymousButtons.Count -ge 3) {
+      $index = $anonymousButtons.Count - 3
+    }
+
+    Write-Log "Goal paused marker visible; using row button heuristic for goal resume."
+    Click-Node $anonymousButtons[$index] "goal resume heuristic"
+    return $true
+  }
+
+  $composer = Find-ComposerNode $nodes $window
+  if ($composer) {
+    $composerBounds = $composer.Current.BoundingRectangle
+    $fallbackX = $composerBounds.X + $composerBounds.Width - 90
+  } else {
+    $fallbackX = $pausedBounds.X + $pausedBounds.Width + 120
+  }
+
+  Write-Log "Goal paused marker visible; using coordinate fallback for goal resume."
+  Click-Point $fallbackX $targetY "goal resume fallback"
+  return $true
+}
+
 function Invoke-FinalResumeAndWait {
   param(
     [string]$Text,
@@ -1432,8 +1569,22 @@ function Invoke-FinalResumeAndWait {
   Click-Continue-Or-Send $Text
 
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $goalDeadline = (Get-Date).AddSeconds([math]::Min($GoalResumeWaitSeconds, $TimeoutSeconds))
   $lastWaitingLog = [datetime]::MinValue
+  $goalResumeClicked = $false
   while ((Get-Date) -lt $deadline) {
+    if ($ShouldGoalResume -and -not $goalResumeClicked -and (Get-Date) -lt $goalDeadline) {
+      try {
+        if (Click-GoalResumeIfPaused) {
+          Write-Log "Goal resume clicked after final continue."
+          $goalResumeClicked = $true
+          Start-Sleep -Seconds 2
+        }
+      } catch {
+        Write-Log "Goal resume check failed: $($_.Exception.Message)"
+      }
+    }
+
     if (Test-RunStartedVisible) {
       return $true
     }
@@ -1479,7 +1630,7 @@ function Invoke-Recovery {
   Write-Log "Recovery flow finished."
 }
 
-Write-Log "Codex compact rescue watcher started. PollSeconds=$PollSeconds RoundCooldownSeconds=$RoundCooldownSeconds ModelSwitchAttempts=$ModelSwitchAttempts Once=$Once FinalResume=$ShouldFinalResume WhatIf=$WhatIf"
+Write-Log "Codex compact rescue watcher started. PollSeconds=$PollSeconds RoundCooldownSeconds=$RoundCooldownSeconds ModelSwitchAttempts=$ModelSwitchAttempts GoalResume=$ShouldGoalResume Once=$Once FinalResume=$ShouldFinalResume WhatIf=$WhatIf"
 
 if ($SwitchModelOnly) {
   Set-CodexModel $SwitchModelOnly

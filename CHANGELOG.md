@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.18
+
+- Adds `/goal` support after the final GPT-5.5 resume: if a visible goal-paused row appears, the watcher clicks the row's resume/play control instead of sending another text `繼續`.
+- Adds `-NoGoalResume` and `-GoalResumeWaitSeconds` for disabling or tuning goal resume detection.
+- Reduces accidental GPT-5.2 switches by preferring exact `GPT-5.4-Mini` menu-item selection and by requiring coordinate fallbacks to confirm the target model before returning success.
+
 ## 0.1.17
 
 - Removes the automatic second `繼續` after switching to GPT-5.4-Mini.

@@ -77,7 +77,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-compact-resc
   -CompactWaitSeconds 600 `
   -AfterStopDelaySeconds 1 `
   -RoundCooldownSeconds 60 `
-  -ModelSwitchAttempts 5
+  -ModelSwitchAttempts 5 `
+  -GoalResumeWaitSeconds 30
 ```
 
 - `-PollSeconds`: how often to scan the visible Codex UI.
@@ -86,9 +87,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-compact-resc
 - `-RoundCooldownSeconds`: wait after a completed recovery before watching again.
 - `-ModelSwitchAttempts`: max attempts for switching to the target model. Default: 5.
 - `-FinalResumeConfirmSeconds`: after sending the final `繼續` once, wait this long for Codex to show that the run started. Default: 90.
+- `-GoalResumeWaitSeconds`: after final `繼續`, scan this long for a paused `/goal` row and click its resume/play button. Default: 30.
 - `-ResumeText`: text sent when no clickable continue button is available. Default: `繼續`.
 - `-FinalResume`: legacy flag; final `繼續` is now on by default.
 - `-NoFinalResume`: disable the final `繼續` after switching back to GPT-5.5.
+- `-NoGoalResume`: disable the paused `/goal` resume click after final `繼續`.
 - `-Once`: handle one recovery round then exit.
 - `-WhatIf`: log planned actions without clicking or typing.
 
@@ -101,7 +104,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex-compact-resc
 - By default, recovery sends `繼續` after switching back to GPT-5.5. Use `-NoFinalResume` only if you explicitly want the watcher to stop after switching models.
 - Completion is not guessed by a fixed timer. The watcher records existing compact markers and post-compact ready markers, treats `上下文已自動精簡` only as a candidate, then waits for a new ready marker such as `已引導對話` before switching back.
 - After switching back to GPT-5.5, the watcher waits for the model button to confirm the change, sends final `繼續` once, and then waits for proof that the run started, such as a stop/pause control or `正在思考` / `正在執行` status.
-- Switching to GPT-5.4-Mini is retried. Each attempt tries keyboard navigation, anchored clicks, and mouse/menu fallback before waiting and trying again.
+- If a paused `/goal` row appears after the final `繼續`, the watcher clicks that row's resume/play control. It does not send another text `繼續`.
+- Switching to GPT-5.4-Mini is retried. Each attempt now prefers exact `GPT-5.4-Mini` menu-item selection before keyboard or anchored fallbacks.
+- Coordinate fallbacks must confirm the target model before returning success. If Codex selects another model such as GPT-5.2, the watcher keeps retrying and will not continue as if GPT-5.4-Mini was selected.
 - Model switching now starts the retry attempt before reading the current model state, and model-button lookup scans visible buttons only. This reduces stalls when Codex is temporarily busy during compacting.
 - When sending the first `繼續` after switching to GPT-5.4-Mini, the watcher focuses the lower composer only. If no run-start signal appears, it logs that the send was not confirmed but does not send another `繼續`. Final resume after switching back to GPT-5.5 is also single-send.
 - If the watcher starts while the thread is already on GPT-5.4-Mini, it will not infer completion from old visible `上下文已自動精簡` markers. It also will not switch back to GPT-5.5 from `上下文已自動精簡` alone; a new post-compact ready marker is required. This avoids stopping an active compact in the middle.
