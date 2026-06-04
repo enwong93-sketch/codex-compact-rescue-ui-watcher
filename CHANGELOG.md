@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.21
+
+- Recovers after accidental switches to models such as `5.3-Codex-Spark` by broadening model-button detection beyond only GPT-5.5/GPT-5.4 labels.
+- Changes GPT-5.4-Mini recovery to use exact menu-item selection first and removes the GPT-5.4-Mini anchored coordinate fallback that could select another model.
+- Limits menu-item scanning to top-level popup/menu windows instead of root desktop descendants.
+
 ## 0.1.20
 
 - Removes the UIA menu-scan mouse path from automatic model switching. The watcher now uses keyboard-first switching with anchored-click fallback for both GPT-5.4-Mini and GPT-5.5.

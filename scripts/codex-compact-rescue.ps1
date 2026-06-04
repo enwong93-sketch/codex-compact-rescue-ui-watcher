@@ -190,23 +190,50 @@ function Get-VisibleMenuItems {
     [System.Windows.Automation.ControlType]::MenuItem
   )
 
-  $nodes = $root.FindAll(
-    [System.Windows.Automation.TreeScope]::Descendants,
-    $menuItemCondition
+  $visibleItems = @()
+  $topLevelNodes = $root.FindAll(
+    [System.Windows.Automation.TreeScope]::Children,
+    [System.Windows.Automation.Condition]::TrueCondition
   )
 
-  $visibleItems = @()
-  foreach ($node in $nodes) {
-    $bounds = $node.Current.BoundingRectangle
-    if (
-      $node.Current.Name -and
-      $node.Current.IsEnabled -and
-      -not $bounds.IsEmpty -and
-      $bounds.Width -gt 0 -and
-      $bounds.Height -gt 0 -and
-      $bounds.Y -gt -20
-    ) {
-      $visibleItems += $node
+  foreach ($topLevelNode in $topLevelNodes) {
+    $topBounds = $topLevelNode.Current.BoundingRectangle
+    if ($topBounds.IsEmpty -or $topBounds.Width -le 0 -or $topBounds.Height -le 0 -or $topBounds.Y -lt -20) {
+      continue
+    }
+
+    $topType = $topLevelNode.Current.ControlType.ProgrammaticName
+    $isSmallPopup = $topBounds.Width -le 1000 -and $topBounds.Height -le 1000
+    if ($topType -ne "ControlType.Menu" -and $topType -ne "ControlType.MenuItem" -and -not $isSmallPopup) {
+      continue
+    }
+
+    if ($topType -eq "ControlType.MenuItem") {
+      $visibleItems += $topLevelNode
+      continue
+    }
+
+    try {
+      $nodes = $topLevelNode.FindAll(
+        [System.Windows.Automation.TreeScope]::Descendants,
+        $menuItemCondition
+      )
+    } catch {
+      continue
+    }
+
+    foreach ($node in $nodes) {
+      $bounds = $node.Current.BoundingRectangle
+      if (
+        $node.Current.Name -and
+        $node.Current.IsEnabled -and
+        -not $bounds.IsEmpty -and
+        $bounds.Width -gt 0 -and
+        $bounds.Height -gt 0 -and
+        $bounds.Y -gt -20
+      ) {
+        $visibleItems += $node
+      }
     }
   }
 
@@ -262,6 +289,28 @@ function Find-VisibleMenuItemExact {
   }
 
   return $matchedNodes | Sort-Object { $_.Current.BoundingRectangle.X } -Descending | Select-Object -First 1
+}
+
+function Find-FirstVisibleModelMenuItem {
+  param([object]$Nodes)
+
+  foreach ($node in $Nodes) {
+    $name = $node.Current.Name
+    $bounds = $node.Current.BoundingRectangle
+    if (
+      $name -and
+      $node.Current.IsEnabled -and
+      -not $bounds.IsEmpty -and
+      $bounds.Width -gt 0 -and
+      $bounds.Height -gt 0 -and
+      $bounds.Y -gt -20 -and
+      $name -match "^(GPT|5\.)"
+    ) {
+      return $node
+    }
+  }
+
+  return $null
 }
 
 function Click-Node {
@@ -621,7 +670,29 @@ function Get-ModelButton {
     [System.Windows.Automation.TreeScope]::Descendants,
     $buttonCondition
   )
-  $button = Find-Node $nodes "^(5\.5|5\.4|GPT)" "ControlType\.Button" -VisibleOnly -EnabledOnly
+  $matchedButtons = @()
+  foreach ($node in $nodes) {
+    $name = $node.Current.Name
+    $bounds = $node.Current.BoundingRectangle
+    if (
+      $name -and
+      $node.Current.IsEnabled -and
+      -not $bounds.IsEmpty -and
+      $bounds.Width -gt 0 -and
+      $bounds.Height -gt 0 -and
+      $bounds.Y -gt -20 -and
+      (
+        $name -match "^(5\.[0-9]|GPT|gpt-|o[0-9])" -or
+        $name -match "(Codex|Mini|Spark)"
+      )
+    ) {
+      $matchedButtons += $node
+    }
+  }
+
+  $button = $matchedButtons |
+    Sort-Object @{ Expression = { $_.Current.BoundingRectangle.Y }; Descending = $true } |
+    Select-Object -First 1
 
   if (-not $button) {
     throw "Cannot find the model dropdown button."
@@ -788,11 +859,14 @@ function Set-CodexModelWithMouse {
   Write-Log "Scanning visible menu items for model switch."
   $allNodes = Get-VisibleMenuItems
   $currentModelItem = $null
-  foreach ($modelMenuName in @("GPT-5.5", "GPT-5.4-Mini", "GPT-5.4")) {
+  foreach ($modelMenuName in @("GPT-5.5", "GPT-5.4-Mini", "GPT-5.4", "GPT-5.3-Codex-Spark", "5.3-Codex-Spark")) {
     $currentModelItem = Find-VisibleMenuItemExact $allNodes $modelMenuName
     if ($currentModelItem) {
       break
     }
+  }
+  if (-not $currentModelItem) {
+    $currentModelItem = Find-FirstVisibleModelMenuItem $allNodes
   }
 
   $currentModelBounds = $null
@@ -829,6 +903,14 @@ function Set-CodexModelWithMouse {
 
   if (-not $target -and $Model -eq "5.4-Mini") {
     $allNodes = Get-VisibleMenuItems
+    $gpt54 = Find-VisibleMenuItemExact $allNodes "GPT-5.4"
+    if ($gpt54) {
+      $target = Open-SubmenuAndFindTarget $gpt54 "GPT-5.4 submenu" $targetName
+    }
+  }
+
+  if (-not $target -and $Model -eq "5.4-Mini") {
+    $allNodes = Get-VisibleMenuItems
     $otherModels = Find-VisibleMenuItemExact $allNodes $TextOtherModels
     if ($otherModels) {
       $otherBounds = $otherModels.Current.BoundingRectangle
@@ -836,24 +918,8 @@ function Set-CodexModelWithMouse {
       Hover-BoundsAtFraction $otherBounds 0.95 $otherName "other models"
       $target = Find-TargetMenuItemAfterHover $targetName
 
-      if (-not $target -and $currentModelBounds) {
-        $fallbackX = $currentModelBounds.X + ($currentModelBounds.Width / 2)
-        $fallbackY = $otherBounds.Y - 51
-        Click-Point $fallbackX $fallbackY "$targetName fallback"
-        Start-Sleep -Seconds 1
-
-        $current = Get-CurrentModelName
-        if (Test-ModelNameMatches $Model $current) {
-          Write-Log "Mouse fallback model switch confirmed: $current"
-          return $true
-        }
-
-        if (Wait-ForModelName $Model 5) {
-          return $true
-        }
-
-        Write-Log "Mouse fallback did not confirm $targetName. Current model button: $current"
-        return $false
+      if (-not $target) {
+        $target = Open-SubmenuAndFindTarget $otherModels "other models" $targetName
       }
     }
   }
@@ -957,6 +1023,18 @@ function Set-CodexModel {
     }
 
     try {
+      if (Set-CodexModelWithMouse $Model) {
+        return
+      }
+    } catch {
+      Write-Log "Exact menu model switch attempt $attempt failed: $($_.Exception.Message)"
+      Close-OpenMenu
+    }
+    if (Wait-ForModelName $Model 3) {
+      return
+    }
+
+    try {
       if (Set-CodexModelWithKeyboard $Model) {
         return
       }
@@ -969,11 +1047,11 @@ function Set-CodexModel {
     }
 
     try {
-      if (Set-CodexModelWithAnchoredClicks $Model) {
+      if (Set-CodexModelWithMouse $Model) {
         return
       }
     } catch {
-      Write-Log "Anchored model switch attempt $attempt failed: $($_.Exception.Message)"
+      Write-Log "Exact menu retry model switch attempt $attempt failed: $($_.Exception.Message)"
       Close-OpenMenu
     }
     if (Wait-ForModelName $Model 3) {
