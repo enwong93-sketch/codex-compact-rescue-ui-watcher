@@ -682,8 +682,8 @@ function Get-ModelButton {
       $bounds.Height -gt 0 -and
       $bounds.Y -gt -20 -and
       (
-        $name -match "^(5\.[0-9]|GPT|gpt-|o[0-9])" -or
-        $name -match "(Codex|Mini|Spark)"
+        $name -match "^(GPT-)?5\.[0-9]($|[-\s])" -or
+        $name -match "^(gpt-|o[0-9])"
       )
     ) {
       $matchedButtons += $node

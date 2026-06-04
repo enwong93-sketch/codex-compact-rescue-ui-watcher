@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.22
+
+- Narrows model-button detection so sidebar buttons such as `Codex mobile` are not mistaken for the model dropdown.
+- Keeps recovery from `5.3-Codex-Spark` by matching model-like prefixes such as `5.3-`, `5.4-`, `5.5`, `GPT-`, `gpt-`, and `o*`.
+
 ## 0.1.21
 
 - Recovers after accidental switches to models such as `5.3-Codex-Spark` by broadening model-button detection beyond only GPT-5.5/GPT-5.4 labels.
